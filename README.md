@@ -1,36 +1,111 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+<div align="center">
 
-## Getting Started
+<img src="https://img.shields.io/badge/Status-Em_Desenvolvimento-green?style=for-the-badge" alt="Status Badge"/>
+<img src="https://img.shields.io/badge/Next.js-14-black?style=for-the-badge&logo=next.js" alt="Next.js Badge"/>
+<img src="https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript Badge"/>
+<img src="https://img.shields.io/badge/Tailwind_CSS-38B2AC?style=for-the-badge&logo=tailwind-css&logoColor=white" alt="Tailwind CSS Badge"/>
 
-First, run the development server:
+# 🚀 MetaScale
+### Dashboard de Alta Performance & Auditoria de Tráfego com Inteligência Artificial
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+</div>
+
+---
+
+**MetaScale** é um ecossistema premium de Business Intelligence e Inteligência Artificial desenvolvido para infoprodutores, e-commerces, dropshippers e agências focadas em alta escala. 
+
+Com o MetaScale, você transcende as métricas básicas. O sistema consolida dados reais do **Meta Ads** em tempo real através da API Oficial, acoplando um **Motor de Auditoria IA de Elite** (`ads-meta-senior`) desenhado com os mais modernos frameworks de escala de tráfego pago.
+
+---
+
+## ✨ Principais Funcionalidades
+
+- **📈 Dashboard em Tempo Real:** Consolidação de métricas essenciais como Investimento, ROAS real, CPA e funil completo.
+- **🧠 Gestor de Tráfego Sênior Integrado:** Uma IA autônoma que analisa suas campanhas seguindo a doutrina de escala matemática rigorosa (`Lucro -> ROAS -> Eficiência -> Estabilidade -> Escala`).
+- **🎯 Funil de Conversão Premium:** Identificação imediata de gargalos no funil (Connect Rate, Checkout Rate, Purchase Rate).
+- **🤖 Claude Ads Health:** Auditoria instantânea através de uma pontuação (0 a 100) calibrada com as melhores práticas de mídia paga do mercado, rodando mais de 250 verificações ativas.
+- **📄 Exportação Automática de Relatórios:** Geração de PDFs premium com análises aprofundadas, perfeitos para enviar aos seus clientes ou diretoria.
+- **🎨 Design Glassmorphism Premium:** Uma interface visualmente deslumbrante, focada na usabilidade (Dark Mode, fluidez e responsividade extrema).
+
+---
+
+## 🏗️ A Regra de Ouro (80x10x10)
+
+Nosso motor de auditoria IA baseia-se nos pilares definitivos da alta conversão:
+
+- **Connect Rate (LPV / Cliques) $\ge$ 80%** 🚀
+- **Checkout Rate (IC / LPV) $\ge$ 10%** 🛒
+- **Purchase Rate (Compras / IC) $\ge$ 10%** 💰
+
+---
+
+## 🛠️ Tecnologias Utilizadas
+
+- **Frontend:** Next.js (App Router), React, TypeScript, Tailwind CSS
+- **Inteligência Artificial:** Integração via API de LLMs focados em auditoria (Claude/GPT)
+- **Design System:** UI/UX Glassmorphism (Aesthetics premium)
+- **Arquitetura de Agentes:** Sub-personas inteligentes operando nos bastidores (*Copywriter, Designer, Strategist, Engine*)
+
+---
+
+## 💻 Como Rodar o Projeto Localmente
+
+Siga os passos abaixo para iniciar o MetaScale em sua máquina:
+
+### Pré-requisitos
+- **Node.js** (v18 ou superior)
+- **NPM** ou **Yarn**
+
+### Passo a Passo
+
+1. **Clone o repositório**
+   ```bash
+   git clone https://github.com/Thuglife22741/MetaScale.git
+   cd MetaScale
+   ```
+
+2. **Instale as dependências**
+   ```bash
+   npm install
+   ```
+
+3. **Configure as Variáveis de Ambiente**
+   Copie o arquivo de exemplo e insira suas credenciais:
+   ```bash
+   cp .env.local.example .env.local
+   ```
+   *Certifique-se de preencher o `META_ADS_API_TOKEN` e a `IA_API_KEY`.*
+
+4. **Inicie o servidor de desenvolvimento**
+   ```bash
+   npm run dev
+   ```
+   Acesse [http://localhost:3000](http://localhost:3000) no seu navegador.
+
+---
+
+## ☁️ Deploy (Produção)
+
+O MetaScale foi projetado para ser **VPS-Ready**. Toda a lógica de auditoria (`src/lib/ai-agents/`) é processada internamente pelo backend Next.js, tornando o deploy prático e seguro em plataformas como **Vercel**, **Railway**, **Render** ou qualquer **VPS** (Ubuntu, Debian).
+
+**Variáveis de Ambiente Recomendadas na Produção:**
+```env
+META_ADS_API_TOKEN="seu_token_meta"
+IA_API_KEY="sua_chave_ia"
+NEXT_PUBLIC_API_URL="https://seu-dominio.com/api"
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+---
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## 🤝 Autor e Contato
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+**Desenvolvido por Fernando Cerqueira (Thuglife22741)**
 
-## Learn More
+- 📧 Email: **fernandoborgescerqueira@gmail.com**
+- 🐙 GitHub: [Thuglife22741](https://github.com/Thuglife22741)
 
-To learn more about Next.js, take a look at the following resources:
+---
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+<div align="center">
+  <i>"Desenvolvido com foco em máxima lucratividade e eficiência de dados. MetaScale — Métrica certa, escala garantida."</i>
+</div>
