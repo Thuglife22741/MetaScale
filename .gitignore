@@ -34,3 +34,13 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# planning
+.planning/codebase
+
+# temp and scratch files
+scratch/
+analyze_*.py
+
+# environment variables
+.env

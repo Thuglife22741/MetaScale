@@ -6,6 +6,7 @@ import { FilterPills } from '@/components/dashboard/FilterPills';
 import { CampaignCard } from '@/components/dashboard/CampaignCard';
 import { SummaryHeader } from '@/components/dashboard/SummaryHeader';
 import { ConversionFunnel } from '@/components/dashboard/ConversionFunnel';
+import { ClaudeAdsHealth } from '@/components/dashboard/ClaudeAdsHealth';
 import { Campaign, AIDiagnostic } from '@/types';
 
 // Mock Data
@@ -224,18 +225,7 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          <div className="bg-gradient-to-br from-[#1A1A24] to-[#1E1E2A] border border-[#2A2A38] rounded-xl p-6 hover:border-[#6366F1]/30 transition-all">
-            <div className="flex items-center gap-2 mb-3">
-              <span className="text-[#6366F1] animate-pulse">✦</span>
-              <h3 className="text-[#F1F1F3] font-bold text-sm uppercase tracking-wider">Insights da IA</h3>
-            </div>
-            <p className="text-[#8B8BA0] text-[13px] leading-relaxed">
-              O seu <span className="text-[#F1F1F3] font-semibold">Connect Rate</span> está em { (funnelData.connectRate * 100).toFixed(1) }%. 
-              Isso indica que você está perdendo cerca de { (100 - (funnelData.connectRate * 100)).toFixed(1) }% do tráfego antes mesmo da página carregar.
-              <br/><br/>
-              <span className="text-[#6366F1] font-medium">Ação recomendada:</span> Otimize o tempo de resposta do servidor ou reduza o peso das imagens na LP.
-            </p>
-          </div>
+          <ClaudeAdsHealth score={78} />
         </div>
       </div>
 
