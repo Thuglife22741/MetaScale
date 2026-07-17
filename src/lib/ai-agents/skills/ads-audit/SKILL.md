@@ -9,19 +9,13 @@ user-invokable: false
 ## Process
 
 1. **Collect account data**: request exports, screenshots, or API access
-2. **Validate**: confirm at least one platform's data is available before proceeding
+2. **Validate**: confirm the account's data is available before proceeding
 3. **Detect business type**: analyze account signals per ads orchestrator
-4. **Identify active platforms**: determine which platforms are in use
-5. **Delegate to subagents** (if available, otherwise run inline sequentially):
-   - `audit-google`: Conversion tracking, wasted spend, structure, keywords, ads, settings (G01-G74)
+4. **Delegate to subagent** (if available, otherwise run inline):
    - `audit-meta`: Pixel/CAPI health, creative fatigue, structure, audience (M01-M46)
-   - `audit-creative`: LinkedIn, TikTok, Microsoft creative checks + cross-platform synthesis
-   - `audit-tracking`: LinkedIn, TikTok, Microsoft tracking + cross-platform tracking health
-   - `audit-budget`: LinkedIn, TikTok, Microsoft budget/bidding + cross-platform allocation
-   - `audit-compliance`: All-platform compliance, settings, performance benchmarks
-6. **Validate**: verify each subagent returned valid scores with required fields before aggregating
-7. **Score**: calculate per-platform and aggregate Ads Health Score (0-100)
-8. **Report**: generate prioritized action plan with Quick Wins
+5. **Validate**: verify the subagent returned valid scores with required fields before aggregating
+6. **Score**: calculate the Ads Health Score (0-100)
+7. **Report**: generate prioritized action plan with Quick Wins
 
 ## Data Collection
 

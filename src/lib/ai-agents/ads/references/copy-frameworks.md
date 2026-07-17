@@ -1,7 +1,7 @@
 # Ad Copy Frameworks
 
 > Updated: 2026-04-01
-> Source: Used by ads-creative, ads-google, ads-meta, and ads-plan skills
+> Source: Used by ads-creative, ads-meta, and ads-plan skills
 
 ## Overview
 

@@ -150,6 +150,14 @@ src/
 - ✅ Validado ao vivo: diagnóstico real (gargalo "Conversão LP", 5 recomendações) via `/api/ai/diagnostic` HTTP 200.
 - ℹ️ Modelos disponíveis nessa chave: `claude-haiku-4-5`, `claude-sonnet-5`, `claude-opus-4-8` (todos 200). Para trocar, editar `src/lib/anthropic.ts`.
 
+### 2026-07-17 — Limpeza: projeto Meta-only + .env.example + Supabase MCP
+- ✅ **Removido todo conteúdo de outras plataformas** em `src/lib/ai-agents/` (não é usado em runtime, é referência): skills `ads-apple` (+ google/linkedin/microsoft/tiktok/youtube já removidos antes); 4 agentes exclusivos de outras plataformas (`audit-budget/creative/compliance/tracking` — eram só LinkedIn/TikTok/Microsoft) e `audit-google`; ~13 referências (google/linkedin/microsoft/tiktok/youtube-*, gaql-notes, additional-platforms, platform-specs) e 3 research-sources do Google.
+- ✅ **Índice `ads/SKILL.md` reescrito Meta-only** + corrigidos todos os links quebrados em `ads-audit`, `ads-creative`, `ads-generate`, `copy-writer`, `copy-frameworks`, `meta-creative-specs` e `research-sources/README`.
+- ✅ Restou: 14 skills (Meta + genéricos), 5 agents (audit-meta + pipeline criativo), 13 referências. Nenhum link quebrado. Typecheck limpo.
+- ℹ️ Arquivos genéricos (benchmarks, budget-allocation…) ainda citam outras plataformas como comparação — mantidos por serem úteis pro Meta também.
+- ✅ **`.env.example`** criado (placeholders + instruções de onde obter cada chave; sem segredos). Versionável; `.env.local` segue protegido.
+- ✅ **Supabase MCP** conectado só neste projeto (`.mcp.json`, escopo project). ⚠️ project_ref do MCP (`xizqby...`) ≠ do app (`ownwvg...` no `.env.local`) — alinhar.
+
 ### 2026-07-17 — Análise Profunda (media buyer IA) no dashboard
 **Contexto:** o diagnóstico via IA só recebia métricas **somadas**, então culpava a LP e não via os vazamentos reais. Implementada uma "Análise Profunda" que quebra a campanha por posicionamento, público e conjunto — como um media buyer.
 

@@ -1,7 +1,7 @@
 # Meta Creative Specs: Generation Guide
 
 <!-- Updated: 2026-03-12 -->
-<!-- Source: platform-specs.md + Meta Ads Manager requirements -->
+<!-- Source: Meta Ads Manager requirements -->
 <!-- Used by: ads-generate, visual-designer agent -->
 
 ## Purpose

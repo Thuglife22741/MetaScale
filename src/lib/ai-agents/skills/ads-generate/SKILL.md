@@ -68,11 +68,6 @@ Load `~/.claude/skills/ads/references/image-providers.md` to confirm:
 
 For each platform in the campaign brief, load the relevant spec reference:
 - `~/.claude/skills/ads/references/meta-creative-specs.md`
-- `~/.claude/skills/ads/references/google-creative-specs.md`
-- `~/.claude/skills/ads/references/tiktok-creative-specs.md`
-- `~/.claude/skills/ads/references/linkedin-creative-specs.md`
-- `~/.claude/skills/ads/references/youtube-creative-specs.md`
-- `~/.claude/skills/ads/references/microsoft-creative-specs.md`
 
 ### Step 5: Prepare banana Configuration
 

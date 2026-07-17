@@ -11,7 +11,7 @@ user-invokable: false
 ## Process
 
 1. Collect creative assets or performance data from active platforms
-2. Read `ads/references/platform-specs.md` for creative specifications
+2. Read `ads/references/meta-creative-specs.md` for creative specifications
 3. Read `ads/references/benchmarks.md` for CTR/engagement benchmarks
 4. Read `ads/references/scoring-system.md` for weighted scoring algorithm
 5. **Validate**: confirm at least one platform has creative data (assets or performance metrics) before proceeding
@@ -21,14 +21,6 @@ user-invokable: false
 9. Generate production priority recommendations
 
 ## Per-Platform Assessment
-
-### Google Ads Creative
-- RSA: ≥8 unique headlines, ≥3 descriptions per ad group
-- RSA ad strength: "Good" or "Excellent"
-- Pin usage: minimal and strategic (over-pinning kills RSA flexibility)
-- Extensions: sitelinks (≥4), callouts (≥4), structured snippets, image
-- PMax asset groups: text + image + video + optional product feed
-- YouTube: video quality, hook, subtitles (see ads-youtube sub-skill)
 
 ### Meta Ads Creative
 - Format diversity: ≥3 formats active (image, video, carousel, collection)
