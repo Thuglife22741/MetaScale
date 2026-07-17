@@ -1,6 +1,20 @@
 import React from 'react';
 
-export const ClaudeAdsHealth = ({ score = 85 }: { score?: number }) => {
+interface ClaudeAdsHealthProps {
+  score?: number;
+  onRunAudit?: () => void;
+  isAuditing?: boolean;
+  auditProgress?: { done: number; total: number };
+  onExportPDF?: () => void;
+}
+
+export const ClaudeAdsHealth = ({
+  score = 85,
+  onRunAudit,
+  isAuditing = false,
+  auditProgress,
+  onExportPDF,
+}: ClaudeAdsHealthProps) => {
   const getScoreColor = (s: number) => {
     if (s >= 90) return 'text-[#10B981]'; // Green A
     if (s >= 75) return 'text-[#10B981]'; // Green B
@@ -64,11 +78,31 @@ export const ClaudeAdsHealth = ({ score = 85 }: { score?: number }) => {
 
       {/* Action Buttons */}
       <div className="flex flex-col gap-2 mt-auto">
-        <button className="w-full py-2.5 bg-[#6366F1] hover:bg-[#4F46E5] text-white text-sm font-medium rounded-lg transition-colors flex items-center justify-center gap-2">
-          <span>Rodar Auditoria Completa</span>
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+        <button
+          onClick={onRunAudit}
+          disabled={isAuditing || !onRunAudit}
+          className="w-full py-2.5 bg-[#6366F1] hover:bg-[#4F46E5] text-white text-sm font-medium rounded-lg transition-colors flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+        >
+          {isAuditing ? (
+            <>
+              <span>
+                Auditando
+                {auditProgress ? ` ${auditProgress.done}/${auditProgress.total}` : '...'}
+              </span>
+              <svg className="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+            </>
+          ) : (
+            <>
+              <span>Rodar Auditoria Completa</span>
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+            </>
+          )}
         </button>
-        <button className="w-full py-2.5 bg-[#2A2A38] hover:bg-[#3A3A48] text-[#F1F1F3] text-sm font-medium rounded-lg transition-colors flex items-center justify-center gap-2 border border-[#3A3A48]">
+        <button
+          onClick={onExportPDF}
+          disabled={!onExportPDF}
+          className="w-full py-2.5 bg-[#2A2A38] hover:bg-[#3A3A48] text-[#F1F1F3] text-sm font-medium rounded-lg transition-colors flex items-center justify-center gap-2 border border-[#3A3A48] disabled:opacity-60 disabled:cursor-not-allowed"
+        >
           <span>Exportar Relatório PDF</span>
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
         </button>

@@ -22,7 +22,7 @@ export function MetaMetricsGrid({ metrics, ticketMedio = 150 }: MetaMetricsGridP
   return (
     <div className="mt-8 mb-6">
       <h3 className="text-[10px] text-[#8B8BA0] font-medium tracking-widest uppercase mb-4">
-        Métricas Meta Ads — Hoje
+        Métricas Meta Ads — Últimos 30 dias
       </h3>
       
       <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-3">

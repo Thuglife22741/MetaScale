@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { TopBar } from '@/components/layout/TopBar';
 import { FilterPills } from '@/components/dashboard/FilterPills';
 import { CampaignCard } from '@/components/dashboard/CampaignCard';
@@ -9,119 +9,106 @@ import { ConversionFunnel } from '@/components/dashboard/ConversionFunnel';
 import { ClaudeAdsHealth } from '@/components/dashboard/ClaudeAdsHealth';
 import { Campaign, AIDiagnostic } from '@/types';
 
-// Mock Data
-const mockCampaigns: Campaign[] = [
-  {
-    id: '1',
-    ad_account_id: 'acc1',
-    meta_campaign_id: 'meta1',
-    nome: 'CBO - Coleção Inverno - Drop V1',
-    status: 'ACTIVE',
-    objetivo: 'CONVERSIONS',
-    ativo: true,
-    criado_em: new Date().toISOString(),
-    metrics: {
-      id: 'm1',
-      campaign_id: '1',
-      data: new Date().toISOString(),
-      impressoes: 15420,
-      alcance: 12000,
-      frequencia: 1.28,
-      cliques_link: 345,
-      ctr: 2.23,
-      cpc: 1.45,
-      cpm: 32.40,
-      valor_gasto: 500.25,
-      landing_page_views: 310,
-      checkouts_iniciados: 45,
-      compras: 6,
-      valor_conversao: 1200.00,
-      roas: 2.4,
-      cpa: 83.37,
-      connect_rate: 0.89, // 89%
-      conversao_lp: 0.145, // 14.5%
-      conversao_checkout: 0.133, // 13.3%
-      conversao_global: 0.019, // 1.9%
-      escala_status: 'escalavel',
-      criado_em: new Date().toISOString()
-    }
-  },
-  {
-    id: '2',
-    ad_account_id: 'acc1',
-    meta_campaign_id: 'meta2',
-    nome: 'ABO - Teste Criativos - Produto Y',
-    status: 'ACTIVE',
-    objetivo: 'CONVERSIONS',
-    ativo: true,
-    criado_em: new Date().toISOString(),
-    metrics: {
-      id: 'm2',
-      campaign_id: '2',
-      data: new Date().toISOString(),
-      impressoes: 8500,
-      alcance: 7900,
-      frequencia: 1.07,
-      cliques_link: 120,
-      ctr: 1.41,
-      cpc: 2.10,
-      cpm: 29.60,
-      valor_gasto: 252.00,
-      landing_page_views: 65,
-      checkouts_iniciados: 5,
-      compras: 0,
-      valor_conversao: 0,
-      roas: 0,
-      cpa: 0,
-      connect_rate: 0.54, // 54%
-      conversao_lp: 0.076, // 7.6%
-      conversao_checkout: 0, // 0%
-      conversao_global: 0, // 0%
-      escala_status: 'nao_escalar',
-      criado_em: new Date().toISOString()
-    }
-  }
-];
-
-const mockDiagnostics: Record<string, AIDiagnostic> = {
-  '1': {
-    id: 'd1',
-    campaign_id: '1',
-    metrics_id: 'm1',
-    data: new Date().toISOString(),
-    gargalo: 'nenhum',
-    diagnostico: 'Campanha performando acima das métricas alvo. Connect rate e conversões estão saudáveis.',
-    recomendacoes: [{ texto: 'Escalar orçamento em 20%', prioridade: 'alta' }],
-    prioridade: 'alta',
-    criado_em: new Date().toISOString()
-  },
-  '2': {
-    id: 'd2',
-    campaign_id: '2',
-    metrics_id: 'm2',
-    data: new Date().toISOString(),
-    gargalo: 'Connect Rate (54%)',
-    diagnostico: 'Apenas 54% dos cliques chegam na LP. Isso indica problema no tempo de carregamento ou desalinhamento entre o criativo e a página.',
-    recomendacoes: [
-      { texto: 'Otimizar tempo de carregamento da LP', prioridade: 'alta' },
-      { texto: 'Pausar criativos com maior gap de clique x view', prioridade: 'media' }
-    ],
-    prioridade: 'alta',
-    criado_em: new Date().toISOString()
-  }
-};
+interface MetaAccount {
+  id: string;
+  name: string;
+  currency: string;
+}
 
 export default function DashboardPage() {
   const [activeFilter, setActiveFilter] = useState('Todas');
   const [isSyncing, setIsSyncing] = useState(false);
+  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [account, setAccount] = useState<MetaAccount | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [lastSync, setLastSync] = useState<string | null>(null);
+  const [diagnostics, setDiagnostics] = useState<Record<string, AIDiagnostic>>({});
+  const [isAuditing, setIsAuditing] = useState(false);
+  const [auditProgress, setAuditProgress] = useState({ done: 0, total: 0 });
 
-  const handleSync = async () => {
+  // Dispara a análise de IA (Claude) para cada campanha em paralelo, sem bloquear o render.
+  const fetchDiagnostics = useCallback(async (list: Campaign[]) => {
+    const withMetrics = list.filter((c) => c.metrics);
+    setIsAuditing(true);
+    setAuditProgress({ done: 0, total: withMetrics.length });
+    try {
+      await Promise.all(
+        withMetrics.map(async (c) => {
+          try {
+            const res = await fetch('/api/ai/diagnostic', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ campaignName: c.nome, metrics: c.metrics }),
+            });
+            const data = await res.json();
+            if (data.success && data.diagnostic) {
+              setDiagnostics((prev) => ({
+                ...prev,
+                [c.id]: {
+                  id: `diag-${c.id}`,
+                  campaign_id: c.id,
+                  metrics_id: c.metrics!.id,
+                  data: new Date().toISOString(),
+                  gargalo: data.diagnostic.gargalo ?? 'nenhum',
+                  diagnostico: data.diagnostic.diagnostico ?? '',
+                  recomendacoes: data.diagnostic.recomendacoes ?? [],
+                  prioridade: data.diagnostic.recomendacoes?.[0]?.prioridade ?? 'media',
+                  criado_em: new Date().toISOString(),
+                },
+              }));
+            }
+          } catch {
+            // Falha silenciosa por campanha — o card mostra "Analisando...".
+          } finally {
+            setAuditProgress((p) => ({ ...p, done: p.done + 1 }));
+          }
+        })
+      );
+    } finally {
+      setIsAuditing(false);
+    }
+  }, []);
+
+  // Botão "Rodar Auditoria Completa" — re-analisa todas as campanhas com IA.
+  const handleRunAudit = useCallback(() => {
+    if (campaigns.length > 0) void fetchDiagnostics(campaigns);
+  }, [campaigns, fetchDiagnostics]);
+
+  // Botão "Exportar Relatório PDF" — usa a impressão do navegador (Salvar como PDF).
+  const handleExportPDF = useCallback(() => {
+    if (typeof window !== 'undefined') window.print();
+  }, []);
+
+  const handleSync = useCallback(async () => {
     setIsSyncing(true);
-    // Simular sync
-    setTimeout(() => setIsSyncing(false), 1500);
-  };
+    setError(null);
+    setDiagnostics({});
+    try {
+      const res = await fetch('/api/meta/sync?range=last_30d', { method: 'GET' });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Falha ao sincronizar com a Meta Ads.');
+      }
+      const list: Campaign[] = data.campaigns || [];
+      setCampaigns(list);
+      setAccount(data.account || null);
+      setLastSync(data.synced_at || new Date().toISOString());
+      // Análise de IA em background (não aguarda para liberar o dashboard).
+      void fetchDiagnostics(list);
+    } catch (err: any) {
+      setError(err?.message || 'Erro desconhecido ao sincronizar.');
+      setCampaigns([]);
+    } finally {
+      setIsSyncing(false);
+    }
+  }, [fetchDiagnostics]);
 
-  const filteredCampaigns = mockCampaigns.filter(c => {
+  // Sincroniza automaticamente ao abrir o dashboard.
+  useEffect(() => {
+    handleSync();
+  }, [handleSync]);
+
+  const filteredCampaigns = campaigns.filter(c => {
     if (activeFilter === 'Todas') return true;
     if (activeFilter === 'Escaláveis') return c.metrics?.escala_status === 'escalavel';
     if (activeFilter === 'Otimizar') return c.metrics?.escala_status === 'otimizar';
@@ -169,14 +156,44 @@ export default function DashboardPage() {
     cpa: aggregateMetrics.vendas > 0 ? aggregateMetrics.investimento / aggregateMetrics.vendas : 0,
   };
 
+  // Score de saúde (0-100) derivado das métricas reais agregadas.
+  const healthScore = (() => {
+    if (aggregateMetrics.impressoes === 0) return 0;
+    const roas = summaryData.roas;
+    const connectRate = funnelData.connectRate;
+    const linkCtr = aggregateMetrics.impressoes > 0 ? aggregateMetrics.cliques / aggregateMetrics.impressoes : 0;
+    const chkConv = funnelData.chkConv;
+    const lpConv = funnelData.lpConv;
+    const clamp = (v: number) => Math.max(0, Math.min(1, v));
+    const score =
+      clamp(roas / 3) * 40 +          // ROAS alvo 3x
+      clamp(connectRate / 0.8) * 20 + // Connect rate alvo 80%
+      clamp(linkCtr / 0.025) * 15 +   // CTR link alvo 2.5%
+      clamp(chkConv / 0.1) * 15 +     // Conv. checkout alvo 10%
+      clamp(lpConv / 0.1) * 10;       // Conv. LP alvo 10%
+    return Math.round(score);
+  })();
+
   return (
     <div className="pb-10 max-w-[1400px] mx-auto px-4">
-      <TopBar 
-        title="Performance Overview" 
-        subtitle="Métricas consolidadas de todas as suas fontes de tráfego" 
+      <TopBar
+        title="Performance Overview"
+        subtitle={account ? `${account.name} · ${account.currency} · dados reais Meta Ads (30d)` : 'Sincronizando com a Meta Ads...'}
         onSync={handleSync}
         isSyncing={isSyncing}
       />
+
+      {error && (
+        <div className="mt-4 rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+          Erro ao sincronizar: {error}
+        </div>
+      )}
+
+      {!error && !isSyncing && campaigns.length === 0 && (
+        <div className="mt-4 rounded-lg border border-[#2A2A38] bg-[#1A1A24] px-4 py-3 text-sm text-[#8B8BA0]">
+          Nenhuma campanha encontrada nesta conta de anúncios.
+        </div>
+      )}
 
       {/* Seção de Cards de Sumário */}
       <div className="mt-8 mb-6">
@@ -225,7 +242,13 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          <ClaudeAdsHealth score={78} />
+          <ClaudeAdsHealth
+            score={healthScore}
+            onRunAudit={handleRunAudit}
+            isAuditing={isAuditing}
+            auditProgress={auditProgress}
+            onExportPDF={handleExportPDF}
+          />
         </div>
       </div>
 
@@ -244,10 +267,10 @@ export default function DashboardPage() {
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
         {filteredCampaigns.map(campaign => (
-          <CampaignCard 
-            key={campaign.id} 
-            campaign={campaign} 
-            diagnostic={mockDiagnostics[campaign.id]} 
+          <CampaignCard
+            key={campaign.id}
+            campaign={campaign}
+            diagnostic={diagnostics[campaign.id] ?? null}
           />
         ))}
       </div>

@@ -42,5 +42,13 @@ next-env.d.ts
 scratch/
 analyze_*.py
 
+# prints do dashboard (contêm dados reais de cliente) — versiona só o README
+prints/*
+!prints/README.md
+
+# análises de IA salvas localmente (dados reais de cliente) — versiona só o README
+analises-ia/*
+!analises-ia/README.md
+
 # environment variables
 .env
