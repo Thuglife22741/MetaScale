@@ -281,7 +281,7 @@ export async function fetchCampaignAnalysis(
   const [adsetRaw, placeRaw, ageRaw] = await Promise.all([
     fetchInsightRows(
       campaignId,
-      `level=adset&date_preset=${datePreset}&fields=adset_name,${ANALYSIS_FIELDS}&limit=300`
+      `level=adset&date_preset=${datePreset}&fields=adset_id,adset_name,${ANALYSIS_FIELDS}&limit=300`
     ),
     fetchInsightRows(
       campaignId,
@@ -294,7 +294,7 @@ export async function fetchCampaignAnalysis(
   ]);
 
   const byAdset = adsetRaw
-    .map((r) => mapBreakdownRow(r, r.adset_name || 'Conjunto'))
+    .map((r) => ({ ...mapBreakdownRow(r, r.adset_name || 'Conjunto'), id: r.adset_id }))
     .sort((a, b) => b.spend - a.spend);
   const byPlacement = placeRaw
     .map((r) => mapBreakdownRow(r, `${r.publisher_platform} / ${r.platform_position}`))
@@ -304,6 +304,28 @@ export async function fetchCampaignAnalysis(
     .sort((a, b) => b.spend - a.spend);
 
   return { byAdset, byPlacement, byAge };
+}
+
+/**
+ * Altera o status de um conjunto (ad set) na conta real — PAUSED ou ACTIVE.
+ * Requer que o token tenha permissão de escrita (ads_management).
+ */
+export async function updateAdsetStatus(
+  adsetId: string,
+  status: 'PAUSED' | 'ACTIVE'
+): Promise<{ success: boolean; error?: string }> {
+  if (!META_ACCESS_TOKEN) {
+    return { success: false, error: 'META_ACCESS_TOKEN ausente no .env.local.' };
+  }
+  try {
+    const params = new URLSearchParams({ status, access_token: META_ACCESS_TOKEN });
+    const res = await fetch(`${GRAPH_BASE}/${adsetId}?${params.toString()}`, { method: 'POST' });
+    const data = await res.json();
+    if (data.error) return { success: false, error: data.error.message };
+    return { success: true };
+  } catch (e: any) {
+    return { success: false, error: e?.message || 'Falha ao atualizar o conjunto.' };
+  }
 }
 
 /**

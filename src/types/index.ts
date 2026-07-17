@@ -69,6 +69,7 @@ export type BreakdownStatus = 'escalar' | 'otimizar' | 'pausar';
 
 export interface BreakdownRow {
   label: string;
+  id?: string; // id do conjunto (só em byAdset) — usado para ações via API
   spend: number;
   impressoes: number;
   compras: number;

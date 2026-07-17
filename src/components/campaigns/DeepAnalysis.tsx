@@ -1,6 +1,8 @@
-import React from 'react';
-import { Sparkles, RefreshCw, TrendingUp, AlertTriangle } from 'lucide-react';
+import React, { useState } from 'react';
+import { Sparkles, RefreshCw, TrendingUp, AlertTriangle, Pause, Check } from 'lucide-react';
 import { CampaignAnalysis, BreakdownRow, BreakdownStatus, DeepDiagnostic } from '@/types';
+
+type ActionState = 'idle' | 'acting' | 'paused' | 'error';
 
 interface DeepAnalysisProps {
   analysis: CampaignAnalysis | null;
@@ -9,6 +11,7 @@ interface DeepAnalysisProps {
   aiLoading: boolean;
   error: string | null;
   onRun: () => void;
+  onPauseAdset?: (adsetId: string, nome: string) => Promise<{ success: boolean; error?: string }>;
 }
 
 const STATUS_STYLE: Record<BreakdownStatus, { cls: string; label: string }> = {
@@ -29,7 +32,60 @@ function StatusPill({ status }: { status: BreakdownStatus }) {
   );
 }
 
-function BreakdownTable({ title, rows }: { title: string; rows: BreakdownRow[] }) {
+function PauseButton({
+  row,
+  state,
+  errMsg,
+  onPause,
+}: {
+  row: BreakdownRow;
+  state: ActionState;
+  errMsg?: string;
+  onPause: (row: BreakdownRow) => void;
+}) {
+  if (!row.id) return <span className="text-[#8B8BA0]">—</span>;
+  if (state === 'paused') {
+    return (
+      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-[#22C55E]">
+        <Check size={12} /> Pausado
+      </span>
+    );
+  }
+  return (
+    <button
+      onClick={() => onPause(row)}
+      disabled={state === 'acting'}
+      title={state === 'error' ? errMsg : `Pausar "${row.label}" na conta real`}
+      className={`inline-flex items-center gap-1 px-2 py-1 rounded border text-[10px] font-medium transition-colors disabled:opacity-50 ${
+        state === 'error'
+          ? 'text-[#EF4444] border-[#EF4444]/30 hover:bg-[#EF4444]/10'
+          : 'text-[#F1F1F3] border-[#3A3A48] hover:bg-[#2A2A38]'
+      }`}
+    >
+      {state === 'acting' ? (
+        <RefreshCw size={12} className="animate-spin" />
+      ) : (
+        <Pause size={12} />
+      )}
+      {state === 'error' ? 'Erro' : 'Pausar'}
+    </button>
+  );
+}
+
+function BreakdownTable({
+  title,
+  rows,
+  onPause,
+  actionState,
+  actionErr,
+}: {
+  title: string;
+  rows: BreakdownRow[];
+  onPause?: (row: BreakdownRow) => void;
+  actionState?: Record<string, ActionState>;
+  actionErr?: Record<string, string>;
+}) {
+  const cols = onPause ? 7 : 6;
   return (
     <div className="bg-[#111116] border border-[#2A2A38] rounded-xl overflow-hidden">
       <h4 className="text-[12px] font-semibold text-[#F1F1F3] px-4 py-3 border-b border-[#2A2A38]">
@@ -44,13 +100,14 @@ function BreakdownTable({ title, rows }: { title: string; rows: BreakdownRow[] }
               <th className="px-2 py-2 font-medium text-right">Compras</th>
               <th className="px-2 py-2 font-medium text-right">ROAS</th>
               <th className="px-2 py-2 font-medium text-right">CPA</th>
-              <th className="px-4 py-2 font-medium text-right">Ação</th>
+              <th className="px-4 py-2 font-medium text-right">Status</th>
+              {onPause && <th className="px-4 py-2 font-medium text-right">Controle</th>}
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-4 py-6 text-center text-[#8B8BA0]">
+                <td colSpan={cols} className="px-4 py-6 text-center text-[#8B8BA0]">
                   Sem dados neste recorte.
                 </td>
               </tr>
@@ -75,6 +132,16 @@ function BreakdownTable({ title, rows }: { title: string; rows: BreakdownRow[] }
                 <td className="px-4 py-2 text-right">
                   <StatusPill status={r.status} />
                 </td>
+                {onPause && (
+                  <td className="px-4 py-2 text-right">
+                    <PauseButton
+                      row={r}
+                      state={(r.id && actionState?.[r.id]) || 'idle'}
+                      errMsg={r.id ? actionErr?.[r.id] : undefined}
+                      onPause={onPause}
+                    />
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>
@@ -90,7 +157,40 @@ function prioColor(p: string) {
   return 'text-[#8B8BA0] bg-[#2A2A38]/50 border-[#2A2A38]';
 }
 
-export function DeepAnalysis({ analysis, deep, loading, aiLoading, error, onRun }: DeepAnalysisProps) {
+export function DeepAnalysis({
+  analysis,
+  deep,
+  loading,
+  aiLoading,
+  error,
+  onRun,
+  onPauseAdset,
+}: DeepAnalysisProps) {
+  const [actionState, setActionState] = useState<Record<string, ActionState>>({});
+  const [actionErr, setActionErr] = useState<Record<string, string>>({});
+
+  const handlePause = async (row: BreakdownRow) => {
+    if (!row.id || !onPauseAdset) return;
+    const ok = window.confirm(
+      `Pausar o conjunto "${row.label}" na conta REAL da Meta?\n\n` +
+        `Isso interrompe a entrega desse conjunto. É reversível — você pode reativar depois no Gerenciador de Anúncios.`
+    );
+    if (!ok) return;
+    setActionState((s) => ({ ...s, [row.id!]: 'acting' }));
+    try {
+      const res = await onPauseAdset(row.id, row.label);
+      if (res.success) {
+        setActionState((s) => ({ ...s, [row.id!]: 'paused' }));
+      } else {
+        setActionState((s) => ({ ...s, [row.id!]: 'error' }));
+        setActionErr((e) => ({ ...e, [row.id!]: res.error || 'Falha ao pausar.' }));
+      }
+    } catch (err: any) {
+      setActionState((s) => ({ ...s, [row.id!]: 'error' }));
+      setActionErr((e) => ({ ...e, [row.id!]: err?.message || 'Falha ao pausar.' }));
+    }
+  };
+
   return (
     <div className="bg-[#0F0F13] border border-[#2A2A38] rounded-xl p-6">
       <div className="flex items-center justify-between mb-1 flex-wrap gap-3">
@@ -190,7 +290,13 @@ export function DeepAnalysis({ analysis, deep, loading, aiLoading, error, onRun 
           {/* Tabelas de quebra */}
           <BreakdownTable title="📍 Por posicionamento" rows={analysis.byPlacement} />
           <BreakdownTable title="👥 Por público (idade · gênero)" rows={analysis.byAge} />
-          <BreakdownTable title="🎯 Por conjunto" rows={analysis.byAdset} />
+          <BreakdownTable
+            title="🎯 Por conjunto"
+            rows={analysis.byAdset}
+            onPause={onPauseAdset ? handlePause : undefined}
+            actionState={actionState}
+            actionErr={actionErr}
+          />
         </div>
       )}
     </div>

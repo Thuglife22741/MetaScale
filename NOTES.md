@@ -158,6 +158,14 @@ src/
 - ✅ **`.env.example`** criado (placeholders + instruções de onde obter cada chave; sem segredos). Versionável; `.env.local` segue protegido.
 - ✅ **Supabase MCP** conectado só neste projeto (`.mcp.json`, escopo project). ⚠️ project_ref do MCP (`xizqby...`) ≠ do app (`ownwvg...` no `.env.local`) — alinhar.
 
+### 2026-07-17 — Ação: botão "Pausar conjunto" (escrita na Meta)
+- ✅ `meta-api.ts` `updateAdsetStatus(adsetId, 'PAUSED'|'ACTIVE')` — escrita via Graph API (`POST /{adset_id}?status=`). `fetchCampaignAnalysis` agora inclui `adset_id` em `byAdset` (novo campo `id` em `BreakdownRow`).
+- ✅ Rota `POST /api/meta/adset` (valida `adsetId` + `status`).
+- ✅ `DeepAnalysis.tsx`: botão **"Pausar"** por conjunto (coluna Controle), com `window.confirm` antes de escrever, estados acting/paused/error e mensagem de erro no hover. Ligado na página de detalhe (`onPauseAdset`).
+- ✅ Escopo: só **pausar** (reversível). Ajustar público/posicionamento fica pra depois.
+- ⚠️ **Requer token com `ads_management`.** O token atual foi usado só para leitura (`ads_read`); se faltar escopo de escrita, o botão mostra "Erro" com a mensagem da API. Pausar é reversível (reativar no Gerenciador).
+- ✅ Typecheck limpo; validação da rota testada (400 sem escrever). Pausa real NÃO testada de propósito (não mexer na conta ativa sem ordem).
+
 ### 2026-07-17 — Análise Profunda (media buyer IA) no dashboard
 **Contexto:** o diagnóstico via IA só recebia métricas **somadas**, então culpava a LP e não via os vazamentos reais. Implementada uma "Análise Profunda" que quebra a campanha por posicionamento, público e conjunto — como um media buyer.
 
@@ -178,6 +186,7 @@ src/
 - ✅ `src/app/api/diagnostics/save/route.ts` (POST): grava em `data/diagnosticos.json` (upsert por `meta_campaign_id`, última análise por campanha) **e** insere em `ai_diagnostics` no Supabase. Falha graciosa: se o Supabase falhar, o arquivo ainda salva; retorna `{file, supabase, supabaseError}`.
 - ✅ `campanhas/[id]/page.tsx`: botão **"Salvar análise"** acima do painel de IA, com estados salvando/salvo/erro e mensagem de status.
 - ✅ Migração `supabase/migrations/20260717000000_add_meta_fields_to_ai_diagnostics.sql`: autossuficiente/idempotente — cria `ai_diagnostics` (se não existir) com `meta_campaign_id` + `campaign_nome`, índice e RLS.
+- ✅ **(2026-07-17, atualização) Persistência no Supabase ATIVA.** Projeto migrado para `xizqbyeguosxhiglpbjm` (URL + chaves anon/service_role + MCP todos alinhados). Migração aplicada no SQL Editor; teste de gravação retornou `{file:true, supabase:true}`. Salva agora em arquivo **e** no banco.
 - ✅ **Pasta renomeada `data/` → `analises-ia/`** (nome óbvio, na raiz do projeto) para o usuário achar e arrastar pro chat. Além do `diagnosticos.json`, agora grava **um `.md` legível por campanha** (`<slug>_<meta_id>.md`). Tem `README.md` versionado pra pasta sempre aparecer no explorador.
 - ✅ `.gitignore`: `analises-ia/*` ignorado (dados reais de cliente), exceto o `README.md`.
 - ⚠️ **Supabase pendente:** o teste retornou `table 'public.ai_diagnostics' not found` — o schema inicial **nunca foi aplicado** nesse projeto Supabase. Para ativar a gravação no banco, rodar a migração acima no **SQL Editor** do Supabase (uma vez). Até lá, o salvamento em arquivo JSON funciona 100%.

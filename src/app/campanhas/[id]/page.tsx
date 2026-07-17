@@ -171,6 +171,21 @@ export default function CampaignDetailsPage({ params }: { params: { id: string }
     }
   }, [campaign]);
 
+  // Ação de escrita: pausar um conjunto na conta real da Meta.
+  const handlePauseAdset = useCallback(async (adsetId: string, _nome: string) => {
+    try {
+      const res = await fetch('/api/meta/adset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ adsetId, status: 'PAUSED' }),
+      });
+      const data = await res.json();
+      return { success: !!data.success, error: data.error };
+    } catch (e: any) {
+      return { success: false, error: e?.message || 'Erro de rede.' };
+    }
+  }, []);
+
   const m = campaign?.metrics;
 
   return (
@@ -317,6 +332,7 @@ export default function CampaignDetailsPage({ params }: { params: { id: string }
               aiLoading={aiLoading}
               error={deepError}
               onRun={handleRunDeep}
+              onPauseAdset={handlePauseAdset}
             />
           </>
         )}
