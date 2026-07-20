@@ -264,9 +264,14 @@ src/
 ## 7. Estado atual (o que funciona)
 
 - 🟢 Sincronização Meta Ads: **100% funcional** com dados reais.
-- 🟢 Funil de conversão, cards de campanha, filtros, summary, health score: **funcionando**.
-- 🟢 Diagnósticos de IA e Plano de Otimização: **100% funcional** e *stateless* (utilizando `claude-opus-4-8` — os modelos antigos `claude-3-5-sonnet-*` / `claude-3-7-sonnet-*` foram retirados pela Anthropic).
-- 🟢 Typecheck limpo · `.env.local` protegido.
+- 🟢 **Filtro por data** (Hoje/Ontem/3/7/14/30d + Personalizado) compartilhado entre Dashboard, Campaigns e Detalhe; default `last_7d`; persiste no navegador.
+- 🟢 Funil, cards, filtros, summary: **funcionando**. **CPA formatado** (R$ 102,30). **Distribuição de Verba** = gasto real por objetivo (não mais 85/10/5 fake).
+- 🟢 **Claude Ads Audit transparente**: nota = soma de 5 fatores reais (ROAS/Connect/CTR/Checkout/LP) com valor·meta·pontos; sem "agentes online" falsos.
+- 🟢 Diagnósticos de IA: **100% funcional** com `claude-opus-4-8` (modelos `claude-3-5/3-7-sonnet-*` foram retirados pela Anthropic). Rota não engole mais o erro; AIAnalyst mostra estado de erro.
+- 🟢 **Análise Profunda** (media buyer IA): quebras por posicionamento/público/conjunto + diagnóstico.
+- 🟢 **Plano de Otimização ancorado na Análise Profunda**: deriva segmentação/posicionamentos/conjuntos-a-pausar das quebras; a execução aplica no targeting e pula os perdedores. *Stateless*.
+- 🟢 **"Salvar análise" grava a página inteira** (métricas + funil + diagnóstico + análise profunda + media buyer + plano) num `.md`, além do JSON/Supabase.
+- 🟢 Typecheck limpo · `.env.local` protegido · **commitado e no GitHub** (commit `2bf95c1`).
 
 ---
 
@@ -274,8 +279,11 @@ src/
 
 - [ ] (Ideia) Persistir campanhas/métricas/diagnósticos no Supabase para histórico e comparação temporal (hoje é sempre "ao vivo").
 - [x] ~~Seletor de período no dashboard~~ — **feito em 2026-07-19** (presets + Personalizado, padrão Gerenciador; default `last_7d`).
-- [ ] (Ideia) Ligar o botão "Rodar Auditoria Completa" / "Exportar Relatório PDF" do card Claude Ads Audit.
+- [x] ~~Botão "Rodar Auditoria Completa" / "Exportar PDF"~~ — já ligados: auditoria re-roda `/api/ai/diagnostic` em todas as campanhas; PDF via `window.print`.
 - [x] ~~Resolver o órfão `src/lib/agents/buildSystemPrompt.ts`~~ — **feito em 2026-07-19** (apagado; era código de outro projeto, sem uso).
+- [ ] **Execução real do Plano NÃO testada** (cria campanha PAUSED na conta ativa — reversível). Validar a criação de ponta a ponta quando quiser.
+- [ ] (Ideia) Metas/pesos do health score (ROAS 3x/40pts, Connect 80%/20, CTR 2,5%/15, Checkout 10%/15, LP 10%/10) estão fixos no `page.tsx` — expor como config se quiser ajustar por negócio.
+- [ ] (Ideia) Ação de escrita: pausar direto os conjuntos perdedores na conta (hoje o plano só evita reduplicá-los na campanha nova).
 
 ---
 
