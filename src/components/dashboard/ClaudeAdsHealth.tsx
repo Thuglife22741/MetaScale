@@ -1,33 +1,58 @@
 import React from 'react';
 
+/** Um fator do health score (ROAS, connect rate, etc.) já calculado. */
+export interface AuditFactor {
+  label: string;
+  valor: string; // valor atual formatado (ex.: "2,64x")
+  meta: string;  // meta formatada (ex.: "3x")
+  peso: number;  // pontos máximos (ex.: 40)
+  pontos: number; // pontos obtidos (0..peso)
+}
+
 interface ClaudeAdsHealthProps {
   score?: number;
+  factors?: AuditFactor[];
   onRunAudit?: () => void;
   isAuditing?: boolean;
   auditProgress?: { done: number; total: number };
   onExportPDF?: () => void;
 }
 
+/** Nota em letra a partir do score 0-100. */
+function letra(s: number): string {
+  if (s >= 90) return 'A';
+  if (s >= 75) return 'B';
+  if (s >= 60) return 'C';
+  if (s >= 40) return 'D';
+  return 'F';
+}
+
 export const ClaudeAdsHealth = ({
-  score = 85,
+  score = 0,
+  factors = [],
   onRunAudit,
   isAuditing = false,
   auditProgress,
   onExportPDF,
 }: ClaudeAdsHealthProps) => {
   const getScoreColor = (s: number) => {
-    if (s >= 90) return 'text-[#10B981]'; // Green A
-    if (s >= 75) return 'text-[#10B981]'; // Green B
-    if (s >= 60) return 'text-[#F59E0B]'; // Yellow C
-    if (s >= 40) return 'text-[#EF4444]'; // Red D
-    return 'text-[#EF4444]'; // Red F
+    if (s >= 75) return 'text-[#10B981]';
+    if (s >= 60) return 'text-[#F59E0B]';
+    return 'text-[#EF4444]';
   };
 
   const getScoreBg = (s: number) => {
-    if (s >= 90) return 'bg-[#10B981]/10 border-[#10B981]/30';
     if (s >= 75) return 'bg-[#10B981]/10 border-[#10B981]/30';
     if (s >= 60) return 'bg-[#F59E0B]/10 border-[#F59E0B]/30';
     return 'bg-[#EF4444]/10 border-[#EF4444]/30';
+  };
+
+  // Cor de cada fator conforme quanto da meta bateu.
+  const fatorCor = (f: AuditFactor) => {
+    const r = f.peso > 0 ? f.pontos / f.peso : 0;
+    if (r >= 0.75) return { txt: 'text-[#10B981]', bar: 'bg-[#10B981]' };
+    if (r >= 0.5) return { txt: 'text-[#F59E0B]', bar: 'bg-[#F59E0B]' };
+    return { txt: 'text-[#EF4444]', bar: 'bg-[#EF4444]' };
   };
 
   return (
@@ -39,42 +64,42 @@ export const ClaudeAdsHealth = ({
             <span className="text-[#6366F1] animate-pulse">✦</span>
             <h3 className="text-[#F1F1F3] font-bold text-sm uppercase tracking-wider">Claude Ads Audit</h3>
           </div>
-          <p className="text-[#8B8BA0] text-xs">Auditoria multicamada via Agentes IA</p>
+          <p className="text-[#8B8BA0] text-xs">Nota de saúde 0–100 · ponderada das métricas reais</p>
         </div>
-        
+
         {/* Score Ring */}
-        <div className={`relative w-16 h-16 rounded-full flex items-center justify-center border-4 ${getScoreBg(score)}`}>
-          <span className={`text-xl font-black ${getScoreColor(score)}`}>{score}</span>
+        <div className={`relative w-16 h-16 rounded-full flex flex-col items-center justify-center border-4 ${getScoreBg(score)}`}>
+          <span className={`text-xl font-black leading-none ${getScoreColor(score)}`}>{score}</span>
+          <span className={`text-[9px] font-bold ${getScoreColor(score)}`}>Nota {letra(score)}</span>
         </div>
       </div>
 
-      {/* Agents Status */}
-      <div className="grid grid-cols-2 gap-3">
-        <div className="bg-[#13131A] p-3 rounded-lg border border-[#2A2A38] flex flex-col gap-1">
-          <span className="text-[#8B8BA0] text-[10px] uppercase font-bold tracking-wider">Copywriter IA</span>
-          <span className="text-[#10B981] text-xs flex items-center gap-1">
-            <div className="w-1.5 h-1.5 rounded-full bg-[#10B981]" /> Online
-          </span>
+      {/* Fatores reais que compõem a nota */}
+      {factors.length > 0 ? (
+        <div className="flex flex-col gap-2.5">
+          {factors.map((f) => {
+            const cor = fatorCor(f);
+            return (
+              <div key={f.label}>
+                <div className="flex justify-between items-baseline text-[11px] mb-1">
+                  <span className="text-[#F1F1F3] font-medium">{f.label}</span>
+                  <span className="text-[#8B8BA0]">
+                    <span className={cor.txt}>{f.valor}</span> / meta {f.meta}
+                    <span className="text-[#5A5A6E]"> · {f.pontos}/{f.peso}pts</span>
+                  </span>
+                </div>
+                <div className="h-1.5 w-full bg-[#2A2A38] rounded-full overflow-hidden">
+                  <div className={`h-full ${cor.bar} rounded-full transition-all`} style={{ width: `${f.peso > 0 ? (f.pontos / f.peso) * 100 : 0}%` }} />
+                </div>
+              </div>
+            );
+          })}
         </div>
-        <div className="bg-[#13131A] p-3 rounded-lg border border-[#2A2A38] flex flex-col gap-1">
-          <span className="text-[#8B8BA0] text-[10px] uppercase font-bold tracking-wider">Visual Designer</span>
-          <span className="text-[#10B981] text-xs flex items-center gap-1">
-            <div className="w-1.5 h-1.5 rounded-full bg-[#10B981]" /> Online
-          </span>
+      ) : (
+        <div className="text-[#8B8BA0] text-xs text-center py-4">
+          Sincronize as campanhas para calcular a nota.
         </div>
-        <div className="bg-[#13131A] p-3 rounded-lg border border-[#2A2A38] flex flex-col gap-1">
-          <span className="text-[#8B8BA0] text-[10px] uppercase font-bold tracking-wider">Ads Strategist</span>
-          <span className="text-[#10B981] text-xs flex items-center gap-1">
-            <div className="w-1.5 h-1.5 rounded-full bg-[#10B981]" /> Online
-          </span>
-        </div>
-        <div className="bg-[#13131A] p-3 rounded-lg border border-[#2A2A38] flex flex-col gap-1">
-          <span className="text-[#8B8BA0] text-[10px] uppercase font-bold tracking-wider">Audit Engine</span>
-          <span className="text-[#10B981] text-xs flex items-center gap-1">
-            <div className="w-1.5 h-1.5 rounded-full bg-[#10B981]" /> 250+ Checks
-          </span>
-        </div>
-      </div>
+      )}
 
       {/* Action Buttons */}
       <div className="flex flex-col gap-2 mt-auto">

@@ -115,6 +115,69 @@ src/
 
 ## 6. Diário — o que já fizemos
 
+### 2026-07-19 — Claude Ads Audit: fim do teatro, nota transparente
+**Contexto:** o card mostrava 4 "agentes" falsos ("Copywriter IA · Online", "Visual Designer · Online", "Ads Strategist · Online", "Audit Engine · 250+ Checks") — tudo hardcoded, não existe agente nenhum rodando. Confundia (parecia funcional). O score já era real, mas opaco.
+- ✅ Removidos os 4 quadros falsos. No lugar, o card mostra os **5 fatores REAIS** que compõem a nota (ROAS 40pts, Connect Rate 20, CTR link 15, Conv. Checkout 15, Conv. LP 10), cada um com valor atual, meta, pontos e barra colorida. A nota exibida é a **soma dos pontos** → 100% transparente e bate com o que aparece.
+- ✅ `page.tsx`: `healthScore` refeito a partir de `auditFactors` (mesma ponderação de antes, agora derivada dos fatores). Passado `factors` ao componente. Adicionada nota em letra (A–F) no ring. Estado vazio tratado.
+- ✅ Continua real: botão "Rodar Auditoria Completa" (re-roda `/api/ai/diagnostic` em todas as campanhas) e "Exportar PDF" (`window.print`).
+- ✅ Validado: com os dados atuais a nota dá **96 (A)** — ROAS/Connect/CTR/Checkout no máximo, só Conv. LP em 6/10 (6% vs meta 10%), que é exatamente o gargalo do diagnóstico.
+
+### 2026-07-19 — Fixes de dashboard: CPA formatado + "Distribuição de Verba" real
+- ✅ **CPA Médio (SummaryHeader):** mostrava "R$ 102,303" (3 casas decimais → parecia "cento e dois mil"). `toLocaleString('pt-BR', { minimumFractionDigits: 2 })` sem `maximumFractionDigits` cai no default de 3 casas. Travado em `maximumFractionDigits: 2` no CPA e no Investimento → **R$ 102,30**. Demais pontos de moeda já fixavam o máximo (OK).
+- ✅ **"Distribuição de Verba" era 100% hardcoded** (85% Conversão / 10% Tráfego / 5% Outros — resquício de mock). Reescrito para dado REAL: gasto por objetivo das campanhas do período (Conversão = SALES/CONVERSION/LEAD; Tráfego = TRAFFIC; Outros = awareness/engagement/etc.), com % e valor em R$, barras dinâmicas via `style width`, estado vazio, e o rótulo da janela ativa. Validado: conta atual dá **Conversão 100%** (3 campanhas OUTCOME_SALES) — antes mentia 85/10/5.
+
+### 2026-07-19 — "Salvar análise" grava a PÁGINA INTEIRA (não só o diagnóstico raso)
+**Contexto:** o botão "Salvar análise" gravava só o diagnóstico de funil (gargalo + texto + recomendações) no `.md`. Pedido: salvar a página toda.
+
+- ✅ **`campanhas/[id]` `handleSaveDiagnostic`** passou a enviar o payload completo: `account`, `range_label`, `metrics` (grid), diagnóstico raso, `analysis` (quebras), `deep` (media buyer) e `plan.plano` (Plano de Otimização).
+- ✅ **`api/diagnostics/save` `buildFullMarkdown()`** (novo, substitui `toMarkdown`): monta o `.md` com TODAS as seções da tela — Métricas Meta Ads, Funil 80×10×10, Diagnóstico IA + recomendações, Análise Profunda (3 tabelas com status colorido), Diagnóstico de media buying (vazamentos + ações), e Plano de Otimização (ajustes, realocação de público/posicionamento, conjuntos NÃO duplicados, racional, riscos). Cada seção é guardada por presença (se não rodou a Análise Profunda/Plano, apenas omite). O `diagnosticos.json` e o insert no Supabase seguem com os campos rasos (compat).
+- ✅ Validado ao vivo (Vendas_ABO_27/06): `.md` completo gerado, acentos corretos, `{file:true, supabase:true}`.
+- ℹ️ O JSON/Supabase continuam guardando só o resumo raso; o **arquivo `.md`** é a versão completa/arrastável.
+
+### 2026-07-19 — Plano de Otimização ancorado na Análise Profunda (media buying real)
+**Contexto:** a Análise Profunda (media buyer IA) identifica os vazamentos reais (posicionamento, público, conjunto), mas o "Plano de Otimização — v1 (duplicar + ajustar)" foi feito antes dela e só olhava métricas agregadas: duplicava **todos** os conjuntos aplicando apenas budget/AN/mobile. Não realocava nada do que a análise apontava. Pedido: o plano deve refletir a Análise Profunda (ex.: `analises-ia/analise-profunda_vendas-abo-27-06_*.md`).
+
+- ✅ **`anthropic.ts` `callOptimizationPlan`** agora recebe as **quebras** (`analysis`) + a leitura do media buyer (`deep`) e deriva alavancas CONCRETAS e prontas para a Meta API no bloco `execucao`:
+  - `segmentacao` `{ idade_min, idade_max, generos:['male'|'female'] }` — o público que compra.
+  - `posicionamentos` `{ publisher_platforms, facebook_positions, instagram_positions }` — concentrar nos vencedores (ex.: só Reels).
+  - `conjuntos_pausar` `[{ id, nome, motivo }]` — os conjuntos perdedores (0 vendas / ROAS<1), com `adset_id` real das quebras.
+  - Regras no prompt: nunca cortar vencedor (ROAS≥2); usar tokens de posicionamento exatos; não listar todos os conjuntos.
+- ✅ **Rota `api/meta/optimize/plan`**: aceita `analysis`/`deep`/`range` do cliente e, se não vierem, **busca `fetchCampaignAnalysis` no servidor** → o plano fica SEMPRE ancorado nas quebras. (`modelo` corrigido p/ `claude-opus-4-8`.)
+- ✅ **Rota `api/meta/optimize/execute`**: `aplicarAlavancas()` injeta `age_min/age_max/genders` e `facebook_positions/instagram_positions/publisher_platforms` no targeting clonado (com whitelist de posicionamentos válidos + reconciliação de plataformas p/ não dar 400); **pula os conjuntos perdedores** (`conjuntos_pausar`, por id ou nome). Salvaguarda: se marcaria TODOS, ignora as pausas p/ não esvaziar a campanha. Resultado mostra `conjuntos_pulados` + avisos deduplicados.
+- ✅ **`campanhas/[id]`**: `handleGeneratePlan` envia `analysis`, `deep` e a janela de data.
+- ✅ **`OptimizationPlan.tsx`**: novo bloco "Realocação de mídia (da Análise Profunda)" com posicionamentos, público e a lista de conjuntos que **não** serão duplicados; resultado exibe "Perdedores cortados: N".
+- ✅ Validado ao vivo (Vendas_ABO_27/06, R$4.153, 30d): plano saiu com segmentação **35–64 homens**, posicionamentos **FB/IG Reels** (corta IG Feed/Stories/AN) e **12 conjuntos perdedores** com adset_id reais p/ não reduplicar. Typecheck limpo.
+- ⚠️ **Execução real NÃO testada de propósito** (cria campanha PAUSED na conta ativa — é reversível, mas não mexemos sem ordem). Rodar só quando você quiser validar a criação de ponta a ponta.
+
+### 2026-07-19 — Fix "Gerando diagnóstico..." travado + limpeza da UI de detalhe
+**Contexto:** na página de detalhe, o painel de IA travava eternamente em "Gerando diagnóstico...", e havia dois botões decorativos ("Editar" e "Forçar Escala") sem função.
+
+- ✅ **Causa raiz do diagnóstico travado:** `anthropic.ts` usava **`claude-3-5-sonnet-20240620`**, modelo **descontinuado pela Anthropic em 28/10/2025** → API retorna 404 → a rota engolia como "Falha na IA" → diagnóstico nunca chegava. O mesmo afetava o deep-diagnostic (mesmo modelo) e o plano (`claude-3-7-sonnet-20250219`, retirado 19/02/2026). Trocados **os 3** para **`claude-opus-4-8`** (modelo atual; a chave responde 200 nele). O `CLAUDE.md` também citava um modelo retirado (`claude-sonnet-4-20250514`) — atualizado para `claude-opus-4-8`.
+- ✅ **Rota `api/ai/diagnostic`** deixou de engolir o erro (`catch {}` → repassa `error.message` + `console.error`). Ajuda a não esconder falha de modelo de novo.
+- ✅ **`AIAnalyst`** ganhou prop `error`: em vez de "Gerando..." infinito, mostra "Falha ao gerar o diagnóstico" + mensagem quando a IA falha. Ligado na página de detalhe (`diagnosticError`).
+- ✅ **UI de detalhe:** removidos os botões decorativos **Editar** e **Forçar Escala** (não faziam nada); o botão **Salvar análise** subiu para o lugar deles (canto superior direito, ao lado do título).
+- ✅ Validado ao vivo: `/api/ai/diagnostic` → success, gargalo `conversao_lp`, 5 recs; `/api/ai/deep-diagnostic` → success, 4 vazamentos, 6 ações. Typecheck limpo.
+
+### 2026-07-19 — Filtro por data (janela de análise, padrão Gerenciador de Anúncios)
+**Contexto:** o dashboard puxava tudo fixo em `last_30d`. Como o Facebook **atribui a compra ao clique** (janela padrão 7d clique/1d view) e há *learning phase*, a janela de leitura muda a decisão: Hoje/Ontem servem para pacing e anomalia (ROAS ainda imaturo); 7 dias é a janela de trabalho; 14/30 dias são decisão de escalar/cortar. Faltava poder escolher a janela, como no Gerenciador.
+
+- ✅ `src/lib/date-range.ts` (novo): presets (`today`, `yesterday`, `last_3d`, `last_7d`, `last_14d`, `last_30d`, `custom`), tipo `RangeSelection`, `rangeToQuery()`, `rangeLabel()` e persistência em `localStorage` (lembra a escolha entre páginas). **Default do cockpit = `last_7d`** (antes era 30d).
+- ✅ `src/components/ui/DateRangePicker.tsx` (novo): dropdown estilo Meta com legenda de uso (media buying) por preset + período **Personalizado** com inputs De/Até (`<input type="date">`, com trava De ≤ Até e max = hoje).
+- ✅ `meta-api.ts`: novo tipo `DateParams` + `dateQuery()` — presets viram `date_preset`; custom vira `time_range={since,until}`. Aplicado em `fetchCampaignsWithMetrics`, `fetchInsightsByCampaign` e `fetchCampaignAnalysis` (as 3 quebras).
+- ✅ Rotas `api/meta/sync` e `api/meta/analysis`: parseiam `range` **ou** `since`/`until`.
+- ✅ Ligado no **Dashboard**, **Campaigns** e **Detalhe** (seletor no TopBar, subtítulos e rótulo do `MetaMetricsGrid` dinâmicos, re-sync automático ao trocar a janela). Na Detalhe, trocar a janela também limpa a Análise Profunda antiga.
+- ✅ Validado ao vivo: gasto cresce monotonicamente com a janela (hoje R$537 → 3d R$1.684 → 7d R$3.274 → 14d R$4.391 → 30d R$5.182); custom 14–18/07 = R$2.584; análise profunda custom HTTP 200 (conjuntos/posições/públicos).
+- ✅ **Limpeza (órfão removido):** `src/lib/agents/buildSystemPrompt.ts` importava `@/lib/supabase-server` (inexistente) e quebrava o `tsc`. Era código de **outro projeto** (Synapse/GStack — tabela `agentes_config`, system prompt de agentes), copiado por engano, **sem nenhum import** no MetaScale. Apagado (junto da pasta `src/lib/agents/`, que só tinha ele). `tsc` voltou a sair **limpo (exit 0)**.
+
+### 2026-07-18 — Plano de Otimização e Refatoração Stateless
+**Contexto:** O botão de "Gerar plano de otimização" não funcionava no MetaScale (a geração do plano falhava silenciosamente e o "Plano de Otimização do Agente — v1" não era criado). Em paralelo, no Synapse, a "Análise Profunda" dava erro de JSON.
+
+- ✅ **Synapse:** Corrigimos o erro `Unexpected end of JSON input` na API de análise. O erro ocorria porque a rota não validava se as credenciais da Meta (`META_ACCESS_TOKEN` e `META_AD_ACCOUNT_ID`) existiam. Adicionamos a função `hasMetaCredentials()` no `meta-api.ts` e conectamos na rota.
+- ✅ **MetaScale (Plano de Otimização Portado):** Migramos todo o escopo de Otimização ("duplicar + ajustar") do Synapse para o MetaScale.
+  - **Refatoração Stateless:** Diferente do Synapse (que salva em banco de dados), a geração do plano no MetaScale foi refeita para ser 100% *stateless* (em memória). A página de detalhes agora orquestra os dados da campanha, métricas e diagnóstico e as envia na hora de gerar e executar o plano, tornando o sistema ultra-veloz e independente de sincronizações assíncronas com banco de dados.
+  - O fluxo foi unificado na UI com: 1. **Análise Profunda**, 2. **Plano de Otimização**, 3. **Trend Analytics**.
+- ✅ **Fix do Modelo IA:** O plano e outros diagnósticos falhavam com erro 400 (Bad Request) ou 404 (Not Found) devido a um identificador de modelo incorreto (`claude-sonnet-5`). Trocamos e fixamos o modelo na API pura da Anthropic como `claude-3-5-sonnet-20240620`, corrigindo de vez o fluxo de geração de planos sem restrições.
+
 ### 2026-07-17 — Sincronização do dashboard com a Meta Ads (dados reais)
 **Contexto:** dashboard vinha renderizando dados **mockados** fixos; as rotas de API eram stubs.
 
@@ -202,18 +265,17 @@ src/
 
 - 🟢 Sincronização Meta Ads: **100% funcional** com dados reais.
 - 🟢 Funil de conversão, cards de campanha, filtros, summary, health score: **funcionando**.
-- 🟡 Diagnósticos de IA: **cabeados**, aguardando `ANTHROPIC_API_KEY` válida.
+- 🟢 Diagnósticos de IA e Plano de Otimização: **100% funcional** e *stateless* (utilizando `claude-opus-4-8` — os modelos antigos `claude-3-5-sonnet-*` / `claude-3-7-sonnet-*` foram retirados pela Anthropic).
 - 🟢 Typecheck limpo · `.env.local` protegido.
 
 ---
 
 ## 8. Pendências / próximos passos
 
-- [ ] **Trocar `ANTHROPIC_API_KEY`** por uma válida (console.anthropic.com → API Keys) e reiniciar o dev server → diagnósticos preenchem sozinhos.
-- [ ] Validar diagnósticos de IA de ponta a ponta assim que a chave entrar.
 - [ ] (Ideia) Persistir campanhas/métricas/diagnósticos no Supabase para histórico e comparação temporal (hoje é sempre "ao vivo").
-- [ ] (Ideia) Seletor de período no dashboard (hoje fixo em `last_30d`).
+- [x] ~~Seletor de período no dashboard~~ — **feito em 2026-07-19** (presets + Personalizado, padrão Gerenciador; default `last_7d`).
 - [ ] (Ideia) Ligar o botão "Rodar Auditoria Completa" / "Exportar Relatório PDF" do card Claude Ads Audit.
+- [x] ~~Resolver o órfão `src/lib/agents/buildSystemPrompt.ts`~~ — **feito em 2026-07-19** (apagado; era código de outro projeto, sem uso).
 
 ---
 
@@ -232,4 +294,4 @@ GET http://localhost:3000/api/meta/accounts
 
 ---
 
-*Última atualização: 2026-07-17.*
+*Última atualização: 2026-07-19.*

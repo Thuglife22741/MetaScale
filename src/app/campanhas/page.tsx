@@ -5,7 +5,16 @@ import { RefreshCw } from 'lucide-react';
 import { TopBar } from '@/components/layout/TopBar';
 import { CampaignCard } from '@/components/dashboard/CampaignCard';
 import { FilterPills } from '@/components/dashboard/FilterPills';
+import { DateRangePicker } from '@/components/ui/DateRangePicker';
 import { Campaign } from '@/types';
+import {
+  RangeSelection,
+  DEFAULT_RANGE,
+  loadRange,
+  saveRange,
+  rangeToQuery,
+  rangeLabel,
+} from '@/lib/date-range';
 
 interface MetaAccount {
   id: string;
@@ -19,12 +28,18 @@ export default function CampaignsPage() {
   const [activeFilter, setActiveFilter] = useState('Todas');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [range, setRange] = useState<RangeSelection>(DEFAULT_RANGE);
+
+  // Restaura a janela de data salva no navegador ao montar.
+  useEffect(() => {
+    setRange(loadRange());
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch('/api/meta/sync?range=last_30d', { method: 'GET' });
+      const res = await fetch(`/api/meta/sync?${rangeToQuery(range)}`, { method: 'GET' });
       const data = await res.json();
       if (!res.ok || !data.success) {
         throw new Error(data.error || 'Falha ao sincronizar com a Meta Ads.');
@@ -37,11 +52,16 @@ export default function CampaignsPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [range]);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  const handleRangeChange = useCallback((sel: RangeSelection) => {
+    saveRange(sel);
+    setRange(sel);
+  }, []);
 
   const filteredCampaigns = campaigns.filter((c) => {
     if (activeFilter === 'Todas') return true;
@@ -57,11 +77,14 @@ export default function CampaignsPage() {
         title="Campaigns"
         subtitle={
           account
-            ? `${account.name} · ${account.currency} · ${campaigns.length} campanha(s) · dados reais (30d)`
+            ? `${account.name} · ${account.currency} · ${campaigns.length} campanha(s) · dados reais · ${rangeLabel(range)}`
             : 'Sincronizando com a Meta Ads...'
         }
         onSync={load}
         isSyncing={loading}
+        actions={
+          <DateRangePicker value={range} onChange={handleRangeChange} disabled={loading} />
+        }
       />
 
       {error && (

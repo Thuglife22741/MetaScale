@@ -28,12 +28,17 @@ async function handle(req: NextRequest) {
     );
   }
 
-  const range = req.nextUrl.searchParams.get('range') || 'last_30d';
+  const sp = req.nextUrl.searchParams;
+  const since = sp.get('since') || undefined;
+  const until = sp.get('until') || undefined;
+  const preset = sp.get('range') || 'last_30d';
+  const date = since && until ? { since, until } : { preset };
+  const range = since && until ? `${since}..${until}` : preset;
 
   try {
     const [account, campaigns] = await Promise.all([
       fetchAccountInfo(),
-      fetchCampaignsWithMetrics(range),
+      fetchCampaignsWithMetrics(date),
     ]);
 
     return NextResponse.json({

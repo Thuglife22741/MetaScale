@@ -9,7 +9,19 @@ import { FunnelBars } from '@/components/campaigns/FunnelBars';
 import { AIAnalyst } from '@/components/campaigns/AIAnalyst';
 import { TrendChart } from '@/components/campaigns/TrendChart';
 import { DeepAnalysis } from '@/components/campaigns/DeepAnalysis';
+import { OptimizationPlan, OptimizationPlanRow } from '@/components/campaigns/OptimizationPlan';
+import { DateRangePicker } from '@/components/ui/DateRangePicker';
 import { Campaign, AIDiagnostic, CampaignAnalysis, DeepDiagnostic } from '@/types';
+import { supabase } from '@/lib/supabase';
+import {
+  RangeSelection,
+  DEFAULT_RANGE,
+  loadRange,
+  saveRange,
+  rangeToQuery,
+  rangeLabel,
+  isCustomValid,
+} from '@/lib/date-range';
 
 interface MetaAccount {
   id: string;
@@ -23,6 +35,7 @@ export default function CampaignDetailsPage({ params }: { params: { id: string }
   const [campaign, setCampaign] = useState<Campaign | null>(null);
   const [account, setAccount] = useState<MetaAccount | null>(null);
   const [diagnostic, setDiagnostic] = useState<AIDiagnostic | null>(null);
+  const [diagnosticError, setDiagnosticError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
@@ -32,13 +45,24 @@ export default function CampaignDetailsPage({ params }: { params: { id: string }
   const [deepLoading, setDeepLoading] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
   const [deepError, setDeepError] = useState<string | null>(null);
+  const [plan, setPlan] = useState<OptimizationPlanRow | null>(null);
+  const [isGeneratingPlan, setIsGeneratingPlan] = useState(false);
+  const [isDeciding, setIsDeciding] = useState(false);
+  const [isExecuting, setIsExecuting] = useState(false);
+  const [range, setRange] = useState<RangeSelection>(DEFAULT_RANGE);
+
+  // Restaura a janela de data salva no navegador ao montar.
+  useEffect(() => {
+    setRange(loadRange());
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     setDiagnostic(null);
+    setDiagnosticError(null);
     try {
-      const res = await fetch('/api/meta/sync?range=last_30d', { method: 'GET' });
+      const res = await fetch(`/api/meta/sync?${rangeToQuery(range)}`, { method: 'GET' });
       const data = await res.json();
       if (!res.ok || !data.success) {
         throw new Error(data.error || 'Falha ao sincronizar com a Meta Ads.');
@@ -77,10 +101,12 @@ export default function CampaignDetailsPage({ params }: { params: { id: string }
                 prioridade: d.diagnostic.recomendacoes?.[0]?.prioridade ?? 'media',
                 criado_em: new Date().toISOString(),
               });
+            } else {
+              setDiagnosticError(d.error || 'A IA não retornou um diagnóstico.');
             }
           })
-          .catch(() => {
-            /* falha silenciosa — AIAnalyst mostra "Gerando diagnóstico..." */
+          .catch((e) => {
+            setDiagnosticError(e?.message || 'Erro de rede ao chamar a IA.');
           });
       }
     } catch (err: any) {
@@ -89,13 +115,22 @@ export default function CampaignDetailsPage({ params }: { params: { id: string }
     } finally {
       setLoading(false);
     }
-  }, [campaignId]);
+  }, [campaignId, range]);
 
   useEffect(() => {
     load();
   }, [load]);
 
-  // Salva a análise da IA no projeto (arquivo JSON) e no Supabase.
+  const handleRangeChange = useCallback((sel: RangeSelection) => {
+    saveRange(sel);
+    setRange(sel);
+    // Zera a análise profunda anterior (foi calculada com outra janela).
+    setAnalysis(null);
+    setDeep(null);
+    setDeepError(null);
+  }, []);
+
+  // Salva a PÁGINA INTEIRA (métricas + funil + diagnóstico + Análise Profunda + Plano).
   const handleSaveDiagnostic = useCallback(async () => {
     if (!campaign || !diagnostic) return;
     setSaveState('saving');
@@ -107,10 +142,22 @@ export default function CampaignDetailsPage({ params }: { params: { id: string }
         body: JSON.stringify({
           meta_campaign_id: campaign.meta_campaign_id,
           campaign_nome: campaign.nome,
+          objetivo: campaign.objetivo,
+          status: campaign.status,
+          account: account ? { name: account.name, id: account.id, currency: account.currency } : null,
+          range_label: rangeLabel(range),
+          // Métricas completas (o grid da página)
+          metrics: campaign.metrics ?? null,
+          // Diagnóstico do funil (raso)
           gargalo: diagnostic.gargalo,
           diagnostico: diagnostic.diagnostico,
           recomendacoes: diagnostic.recomendacoes,
           prioridade: diagnostic.prioridade,
+          // Análise Profunda (quebras + media buyer)
+          analysis: analysis ?? null,
+          deep: deep ?? null,
+          // Plano de Otimização (se gerado)
+          plan: plan?.plano ?? null,
         }),
       });
       const data = await res.json();
@@ -138,7 +185,7 @@ export default function CampaignDetailsPage({ params }: { params: { id: string }
     setDeep(null);
     try {
       const res = await fetch(
-        `/api/meta/analysis?campaignId=${campaign.meta_campaign_id}&range=last_30d`
+        `/api/meta/analysis?campaignId=${campaign.meta_campaign_id}&${rangeToQuery(range)}`
       );
       const data = await res.json();
       if (!res.ok || !data.success) throw new Error(data.error || 'Falha na análise profunda.');
@@ -169,7 +216,7 @@ export default function CampaignDetailsPage({ params }: { params: { id: string }
       setDeepError(err?.message || 'Erro ao rodar a análise profunda.');
       setDeepLoading(false);
     }
-  }, [campaign]);
+  }, [campaign, range]);
 
   // Ação de escrita: pausar um conjunto na conta real da Meta.
   const handlePauseAdset = useCallback(async (adsetId: string, _nome: string) => {
@@ -186,6 +233,76 @@ export default function CampaignDetailsPage({ params }: { params: { id: string }
     }
   }, []);
 
+  const handleGeneratePlan = async () => {
+    if (!campaign) return;
+    setIsGeneratingPlan(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/meta/optimize/plan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          campaign,
+          diagnostic,
+          // Ancora o plano na Análise Profunda (quebras + leitura de media buyer).
+          analysis,
+          deep,
+          // Janela de data p/ a busca-fallback das quebras no servidor.
+          ...(isCustomValid(range)
+            ? { since: range.since, until: range.until }
+            : { range: range.preset }),
+        }),
+      });
+      const json = await res.json();
+      if (!json.success) setError(json.error || 'Falha ao gerar plano');
+      else setPlan(json.plano);
+    } catch (e: any) {
+      setError(e?.message || 'Falha ao gerar plano');
+    } finally {
+      setIsGeneratingPlan(false);
+    }
+  };
+
+  const handleExecute = async () => {
+    if (!plan || !campaign) return;
+    if (!window.confirm('Criar a campanha otimizada em PAUSED na sua conta Meta? Nada vai gastar até você dar o play no Gerenciador.')) return;
+    setIsExecuting(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/meta/optimize/execute', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ plan, campaign }),
+      });
+      const json = await res.json();
+      if (!json.success) {
+        setError(json.error || 'Falha na execução');
+        setPlan({ ...plan, status: 'erro' });
+      } else {
+        setPlan({ ...plan, status: 'executado' });
+      }
+    } catch (e: any) {
+      setError(e?.message || 'Falha na execução');
+      setPlan({ ...plan, status: 'erro' });
+    } finally {
+      setIsExecuting(false);
+    }
+  };
+
+  const handleDecide = async (decisao: 'aprovar' | 'rejeitar') => {
+    if (!plan) return;
+    setIsDeciding(true);
+    setError(null);
+    try {
+      // Sem precisar ir no backend: apenas muda o estado local!
+      setPlan({ ...plan, status: decisao === 'aprovar' ? 'aprovado' : 'rejeitado' });
+    } catch (e: any) {
+      setError(e?.message || 'Falha ao registrar decisão');
+    } finally {
+      setIsDeciding(false);
+    }
+  };
+
   const m = campaign?.metrics;
 
   return (
@@ -201,6 +318,7 @@ export default function CampaignDetailsPage({ params }: { params: { id: string }
         </div>
 
         <div className="flex items-center gap-3">
+          <DateRangePicker value={range} onChange={handleRangeChange} disabled={loading} />
           <button className="w-8 h-8 rounded-full border border-[#2A2A38] flex items-center justify-center text-[#8B8BA0] hover:text-[#F1F1F3] hover:bg-[#1A1A24]">
             <User size={14} />
           </button>
@@ -270,60 +388,49 @@ export default function CampaignDetailsPage({ params }: { params: { id: string }
                 </div>
               </div>
 
-              <div className="flex items-center gap-3">
-                <button className="bg-transparent border border-[#2A2A38] text-[#F1F1F3] px-4 py-1.5 rounded-md text-[13px] font-medium hover:bg-[#1A1A24] transition-colors">
-                  Editar
-                </button>
-                <button className="bg-[#6366F1] hover:bg-[#4f52e2] text-white px-4 py-1.5 rounded-md text-[13px] font-medium transition-colors">
-                  Forçar Escala
+              {/* Ação principal do cabeçalho: salvar a análise da IA no projeto */}
+              <div className="flex items-center gap-3 flex-wrap justify-end">
+                {saveMsg && (
+                  <span
+                    className={`text-[11px] ${
+                      saveState === 'error' ? 'text-red-400' : 'text-[#22C55E]'
+                    }`}
+                  >
+                    {saveMsg}
+                  </span>
+                )}
+                <button
+                  onClick={handleSaveDiagnostic}
+                  disabled={!diagnostic || saveState === 'saving'}
+                  title={!diagnostic ? 'Aguardando o diagnóstico da IA' : 'Salvar esta análise no projeto'}
+                  className="flex items-center gap-2 bg-[#6366F1] hover:bg-[#4f52e2] text-white px-4 py-1.5 rounded-md text-[13px] font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {saveState === 'saving' ? (
+                    <>
+                      <RefreshCw size={14} className="animate-spin" />
+                      Salvando...
+                    </>
+                  ) : saveState === 'saved' ? (
+                    <>
+                      <Check size={14} />
+                      Análise salva
+                    </>
+                  ) : (
+                    <>
+                      <Save size={14} />
+                      Salvar análise
+                    </>
+                  )}
                 </button>
               </div>
             </div>
 
-            <MetaMetricsGrid metrics={m} />
-
-            {/* Barra de ação: salvar a análise da IA no projeto */}
-            <div className="flex items-center justify-end gap-3 flex-wrap">
-              {saveMsg && (
-                <span
-                  className={`text-[11px] ${
-                    saveState === 'error' ? 'text-red-400' : 'text-[#22C55E]'
-                  }`}
-                >
-                  {saveMsg}
-                </span>
-              )}
-              <button
-                onClick={handleSaveDiagnostic}
-                disabled={!diagnostic || saveState === 'saving'}
-                title={!diagnostic ? 'Aguardando o diagnóstico da IA' : 'Salvar esta análise no projeto'}
-                className="flex items-center gap-2 bg-[#6366F1] hover:bg-[#4f52e2] text-white px-4 py-1.5 rounded-md text-[13px] font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {saveState === 'saving' ? (
-                  <>
-                    <RefreshCw size={14} className="animate-spin" />
-                    Salvando...
-                  </>
-                ) : saveState === 'saved' ? (
-                  <>
-                    <Check size={14} />
-                    Análise salva
-                  </>
-                ) : (
-                  <>
-                    <Save size={14} />
-                    Salvar análise
-                  </>
-                )}
-              </button>
-            </div>
+            <MetaMetricsGrid metrics={m} rangeLabel={rangeLabel(range)} />
 
             <div className="grid grid-cols-1 lg:grid-cols-[1.8fr_1fr] gap-6">
               <FunnelBars metrics={m} />
-              <AIAnalyst diagnostic={diagnostic} />
+              <AIAnalyst diagnostic={diagnostic} error={diagnosticError} />
             </div>
-
-            <TrendChart />
 
             <DeepAnalysis
               analysis={analysis}
@@ -334,6 +441,18 @@ export default function CampaignDetailsPage({ params }: { params: { id: string }
               onRun={handleRunDeep}
               onPauseAdset={handlePauseAdset}
             />
+
+            <OptimizationPlan
+              plan={plan}
+              isGenerating={isGeneratingPlan}
+              isDeciding={isDeciding}
+              isExecuting={isExecuting}
+              onGenerate={handleGeneratePlan}
+              onDecide={handleDecide}
+              onExecute={handleExecute}
+            />
+
+            <TrendChart />
           </>
         )}
       </div>

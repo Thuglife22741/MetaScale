@@ -21,6 +21,28 @@ export interface MetaAccountInfo {
 }
 
 /**
+ * Janela de data para os insights. Ou um `preset` (date_preset da Graph API,
+ * ex.: 'today', 'last_7d', 'last_30d') ou um período custom (`since`/`until`
+ * em YYYY-MM-DD → time_range). Se `since`/`until` vierem, têm prioridade.
+ */
+export interface DateParams {
+  preset?: string;
+  since?: string;
+  until?: string;
+}
+
+/** Monta o parâmetro de data da Graph API (date_preset ou time_range). */
+function dateQuery(date: DateParams | string | undefined): string {
+  // Compat: string simples é tratada como preset.
+  if (typeof date === 'string') return `date_preset=${date}`;
+  if (date?.since && date?.until) {
+    const tr = JSON.stringify({ since: date.since, until: date.until });
+    return `time_range=${encodeURIComponent(tr)}`;
+  }
+  return `date_preset=${date?.preset || 'last_30d'}`;
+}
+
+/**
  * Verifica se as credenciais da Meta estão presentes no ambiente.
  */
 export function hasMetaCredentials(): boolean {
@@ -157,7 +179,7 @@ function mapInsightToMetrics(insight: any, campaignId: string): CampaignMetrics 
  * Busca insights de todas as campanhas em uma única chamada e indexa por campaign_id.
  */
 async function fetchInsightsByCampaign(
-  datePreset: string
+  date: DateParams
 ): Promise<Record<string, any>> {
   const fields = [
     'campaign_id',
@@ -174,7 +196,7 @@ async function fetchInsightsByCampaign(
     'action_values',
   ].join(',');
 
-  const url = `${GRAPH_BASE}/${AD_ACCOUNT_ID}/insights?level=campaign&date_preset=${datePreset}&fields=${fields}&limit=200&access_token=${META_ACCESS_TOKEN}`;
+  const url = `${GRAPH_BASE}/${AD_ACCOUNT_ID}/insights?level=campaign&${dateQuery(date)}&fields=${fields}&limit=200&access_token=${META_ACCESS_TOKEN}`;
   const response = await fetch(url, { cache: 'no-store' });
   const data = await response.json();
 
@@ -192,7 +214,7 @@ async function fetchInsightsByCampaign(
  * Esta é a função consumida pelo dashboard para sincronizar com a Meta.
  */
 export async function fetchCampaignsWithMetrics(
-  datePreset: string = 'last_30d'
+  date: DateParams = { preset: 'last_30d' }
 ): Promise<Campaign[]> {
   if (!hasMetaCredentials()) {
     console.error('Credenciais Meta ausentes no .env.local');
@@ -201,7 +223,7 @@ export async function fetchCampaignsWithMetrics(
 
   const [campaigns, insightsById] = await Promise.all([
     fetchMetaCampaigns(),
-    fetchInsightsByCampaign(datePreset).catch((err) => {
+    fetchInsightsByCampaign(date).catch((err) => {
       console.error('Erro ao buscar insights da Meta:', err);
       return {} as Record<string, any>;
     }),
@@ -272,24 +294,25 @@ async function fetchInsightRows(campaignId: string, query: string): Promise<any[
  */
 export async function fetchCampaignAnalysis(
   campaignId: string,
-  datePreset: string = 'last_30d'
+  date: DateParams = { preset: 'last_30d' }
 ): Promise<CampaignAnalysis> {
   if (!hasMetaCredentials()) {
     throw new Error('Credenciais Meta ausentes no .env.local');
   }
 
+  const dq = dateQuery(date);
   const [adsetRaw, placeRaw, ageRaw] = await Promise.all([
     fetchInsightRows(
       campaignId,
-      `level=adset&date_preset=${datePreset}&fields=adset_id,adset_name,${ANALYSIS_FIELDS}&limit=300`
+      `level=adset&${dq}&fields=adset_id,adset_name,${ANALYSIS_FIELDS}&limit=300`
     ),
     fetchInsightRows(
       campaignId,
-      `date_preset=${datePreset}&breakdowns=publisher_platform,platform_position&fields=${ANALYSIS_FIELDS}&limit=300`
+      `${dq}&breakdowns=publisher_platform,platform_position&fields=${ANALYSIS_FIELDS}&limit=300`
     ),
     fetchInsightRows(
       campaignId,
-      `date_preset=${datePreset}&breakdowns=age,gender&fields=${ANALYSIS_FIELDS}&limit=300`
+      `${dq}&breakdowns=age,gender&fields=${ANALYSIS_FIELDS}&limit=300`
     ),
   ]);
 
@@ -484,4 +507,122 @@ export async function createAd(adsetId: string, creativeId: string, name: string
   } catch (error: any) {
     return { success: false, error: { message: error.message } };
   }
+}
+
+// ===========================================================================
+// DUPLICAÇÃO DE CAMPANHA (execução autônoma v1 — "duplicar + ajustar")
+// Lê a estrutura da campanha-fonte e recria em PAUSED aplicando ajustes.
+// ===========================================================================
+
+async function graphGet(pathAndQuery: string): Promise<any> {
+  const sep = pathAndQuery.includes('?') ? '&' : '?';
+  const res = await fetch(`${GRAPH_BASE}/${pathAndQuery}${sep}access_token=${META_ACCESS_TOKEN}`);
+  const data = await res.json();
+  if (data.error) throw new Error(`[Graph GET ${pathAndQuery}] ${data.error.message}`);
+  return data;
+}
+
+async function graphPost(path: string, body: Record<string, string>): Promise<any> {
+  const params = new URLSearchParams({ ...body, access_token: META_ACCESS_TOKEN! });
+  const res = await fetch(`${GRAPH_BASE}/${path}`, { method: 'POST', body: params });
+  const data = await res.json();
+  if (data.error) {
+    const e = data.error;
+    const extra = [e.error_user_title, e.error_user_msg].filter(Boolean).join(' — ');
+    throw new Error(
+      `[Graph POST ${path}] ${e.message}${extra ? ` (${extra})` : ''}` +
+        `${e.error_subcode ? ` [subcode ${e.error_subcode}]` : ''}`
+    );
+  }
+  return data;
+}
+
+export interface SourceAdSet {
+  id: string;
+  name: string;
+  daily_budget?: string;
+  lifetime_budget?: string;
+  billing_event?: string;
+  optimization_goal?: string;
+  bid_strategy?: string;
+  bid_amount?: string;
+  targeting?: any;
+  promoted_object?: any;
+  destination_type?: string;
+  attribution_spec?: any;
+}
+
+/** Lê os conjuntos de anúncios (com config completa) da campanha-fonte. */
+export async function getCampaignAdSets(campaignId: string): Promise<SourceAdSet[]> {
+  const fields =
+    'name,daily_budget,lifetime_budget,billing_event,optimization_goal,bid_strategy,bid_amount,targeting,promoted_object,destination_type,attribution_spec';
+  const data = await graphGet(`${campaignId}/adsets?fields=${fields}&limit=50`);
+  return (data.data || []) as SourceAdSet[];
+}
+
+/** Lê os anúncios de um conjunto (id + creative.id). */
+export async function getAdSetAds(adsetId: string): Promise<{ id: string; name: string; creative?: { id: string } }[]> {
+  const data = await graphGet(`${adsetId}/ads?fields=name,creative{id}&limit=50`);
+  return (data.data || []) as { id: string; name: string; creative?: { id: string } }[];
+}
+
+/** Cria uma campanha nova (ABO — orçamento no conjunto). Sempre PAUSED. */
+export async function createCampaignV2(name: string, objective: string): Promise<string> {
+  const data = await graphPost(`${AD_ACCOUNT_ID}/campaigns`, {
+    name,
+    objective,
+    status: 'PAUSED',
+    special_ad_categories: '[]',
+    is_adset_budget_sharing_enabled: 'false', // ABO — orçamento no conjunto
+  });
+  return data.id as string;
+}
+
+/** Cria um conjunto de anúncios duplicando a config da fonte (com ajustes). Sempre PAUSED. */
+export async function createAdSetV2(params: {
+  campaignId: string;
+  name: string;
+  dailyBudgetCents: number;
+  billingEvent?: string;
+  optimizationGoal?: string;
+  bidStrategy?: string;
+  bidAmount?: string;
+  targeting: any;
+  promotedObject?: any;
+  destinationType?: string;
+}): Promise<string> {
+  const body: Record<string, string> = {
+    campaign_id: params.campaignId,
+    name: params.name,
+    status: 'PAUSED',
+    daily_budget: String(params.dailyBudgetCents),
+    billing_event: params.billingEvent || 'IMPRESSIONS',
+    optimization_goal: params.optimizationGoal || 'LINK_CLICKS',
+    // Lance automático: não exige bid_amount (evita subcode 2490487).
+    bid_strategy: params.bidStrategy || 'LOWEST_COST_WITHOUT_CAP',
+    targeting: JSON.stringify(params.targeting || { geo_locations: { countries: ['BR'] } }),
+  };
+  if (params.bidStrategy && params.bidAmount) body.bid_amount = params.bidAmount;
+  if (params.promotedObject) body.promoted_object = JSON.stringify(params.promotedObject);
+  if (params.destinationType) body.destination_type = params.destinationType;
+  const data = await graphPost(`${AD_ACCOUNT_ID}/adsets`, body);
+  return data.id as string;
+}
+
+/** Apaga uma entidade (campanha/conjunto/anúncio) por id. Usado p/ limpar criação parcial. */
+export async function deleteEntity(id: string): Promise<void> {
+  const res = await fetch(`${GRAPH_BASE}/${id}?access_token=${META_ACCESS_TOKEN}`, { method: 'DELETE' });
+  const data = await res.json().catch(() => ({}));
+  if (data?.error) throw new Error(`[Graph DELETE ${id}] ${data.error.message}`);
+}
+
+/** Cria um anúncio reaproveitando o criativo existente da fonte. Sempre PAUSED. */
+export async function createAdV2(adsetId: string, name: string, creativeId: string): Promise<string> {
+  const data = await graphPost(`${AD_ACCOUNT_ID}/ads`, {
+    name,
+    adset_id: adsetId,
+    creative: JSON.stringify({ creative_id: creativeId }),
+    status: 'PAUSED',
+  });
+  return data.id as string;
 }

@@ -7,7 +7,16 @@ import { CampaignCard } from '@/components/dashboard/CampaignCard';
 import { SummaryHeader } from '@/components/dashboard/SummaryHeader';
 import { ConversionFunnel } from '@/components/dashboard/ConversionFunnel';
 import { ClaudeAdsHealth } from '@/components/dashboard/ClaudeAdsHealth';
+import { DateRangePicker } from '@/components/ui/DateRangePicker';
 import { Campaign, AIDiagnostic } from '@/types';
+import {
+  RangeSelection,
+  DEFAULT_RANGE,
+  loadRange,
+  saveRange,
+  rangeToQuery,
+  rangeLabel,
+} from '@/lib/date-range';
 
 interface MetaAccount {
   id: string;
@@ -25,6 +34,12 @@ export default function DashboardPage() {
   const [diagnostics, setDiagnostics] = useState<Record<string, AIDiagnostic>>({});
   const [isAuditing, setIsAuditing] = useState(false);
   const [auditProgress, setAuditProgress] = useState({ done: 0, total: 0 });
+  const [range, setRange] = useState<RangeSelection>(DEFAULT_RANGE);
+
+  // Restaura a janela de data salva no navegador ao montar.
+  useEffect(() => {
+    setRange(loadRange());
+  }, []);
 
   // Dispara a análise de IA (Claude) para cada campanha em paralelo, sem bloquear o render.
   const fetchDiagnostics = useCallback(async (list: Campaign[]) => {
@@ -84,7 +99,7 @@ export default function DashboardPage() {
     setError(null);
     setDiagnostics({});
     try {
-      const res = await fetch('/api/meta/sync?range=last_30d', { method: 'GET' });
+      const res = await fetch(`/api/meta/sync?${rangeToQuery(range)}`, { method: 'GET' });
       const data = await res.json();
       if (!res.ok || !data.success) {
         throw new Error(data.error || 'Falha ao sincronizar com a Meta Ads.');
@@ -101,12 +116,18 @@ export default function DashboardPage() {
     } finally {
       setIsSyncing(false);
     }
-  }, [fetchDiagnostics]);
+  }, [fetchDiagnostics, range]);
 
-  // Sincroniza automaticamente ao abrir o dashboard.
+  // Sincroniza automaticamente ao abrir e sempre que a janela de data mudar.
   useEffect(() => {
     handleSync();
   }, [handleSync]);
+
+  // Aplica e persiste a nova janela de data (dispara re-sync via handleSync).
+  const handleRangeChange = useCallback((sel: RangeSelection) => {
+    saveRange(sel);
+    setRange(sel);
+  }, []);
 
   const filteredCampaigns = campaigns.filter(c => {
     if (activeFilter === 'Todas') return true;
@@ -156,31 +177,66 @@ export default function DashboardPage() {
     cpa: aggregateMetrics.vendas > 0 ? aggregateMetrics.investimento / aggregateMetrics.vendas : 0,
   };
 
-  // Score de saúde (0-100) derivado das métricas reais agregadas.
-  const healthScore = (() => {
-    if (aggregateMetrics.impressoes === 0) return 0;
+  // Fatores reais que compõem a nota de saúde (0-100). Cada um é valor vs meta,
+  // ponderado. A nota exibida é a SOMA dos pontos — 100% transparente no card.
+  const auditFactors = (() => {
+    if (aggregateMetrics.impressoes === 0) return [] as {
+      label: string; valor: string; meta: string; peso: number; pontos: number;
+    }[];
     const roas = summaryData.roas;
     const connectRate = funnelData.connectRate;
-    const linkCtr = aggregateMetrics.impressoes > 0 ? aggregateMetrics.cliques / aggregateMetrics.impressoes : 0;
+    const linkCtr = aggregateMetrics.cliques / aggregateMetrics.impressoes;
     const chkConv = funnelData.chkConv;
     const lpConv = funnelData.lpConv;
     const clamp = (v: number) => Math.max(0, Math.min(1, v));
-    const score =
-      clamp(roas / 3) * 40 +          // ROAS alvo 3x
-      clamp(connectRate / 0.8) * 20 + // Connect rate alvo 80%
-      clamp(linkCtr / 0.025) * 15 +   // CTR link alvo 2.5%
-      clamp(chkConv / 0.1) * 15 +     // Conv. checkout alvo 10%
-      clamp(lpConv / 0.1) * 10;       // Conv. LP alvo 10%
-    return Math.round(score);
+    const pct = (v: number, d = 1) => `${(v * 100).toFixed(d)}%`;
+    return [
+      { label: 'ROAS', valor: `${roas.toFixed(2)}x`, meta: '3x', peso: 40, ratio: clamp(roas / 3) },
+      { label: 'Connect Rate', valor: pct(connectRate), meta: '80%', peso: 20, ratio: clamp(connectRate / 0.8) },
+      { label: 'CTR (link)', valor: pct(linkCtr, 2), meta: '2,5%', peso: 15, ratio: clamp(linkCtr / 0.025) },
+      { label: 'Conv. Checkout', valor: pct(chkConv), meta: '10%', peso: 15, ratio: clamp(chkConv / 0.1) },
+      { label: 'Conv. LP', valor: pct(lpConv), meta: '10%', peso: 10, ratio: clamp(lpConv / 0.1) },
+    ].map(({ ratio, ...f }) => ({ ...f, pontos: Math.round(ratio * f.peso) }));
   })();
+  const healthScore = auditFactors.reduce((s, f) => s + f.pontos, 0);
+
+  // Distribuição de verba REAL: gasto por objetivo da campanha (não é mais hardcoded).
+  const budgetDist = (() => {
+    const bucket = { conversao: 0, trafego: 0, outros: 0 };
+    let total = 0;
+    for (const c of filteredCampaigns) {
+      const gasto = c.metrics?.valor_gasto || 0;
+      if (gasto <= 0) continue;
+      total += gasto;
+      const obj = (c.objetivo || '').toUpperCase();
+      if (obj.includes('SALES') || obj.includes('CONVERSION') || obj.includes('LEAD')) {
+        bucket.conversao += gasto;
+      } else if (obj.includes('TRAFFIC') || obj.includes('LINK_CLICKS')) {
+        bucket.trafego += gasto;
+      } else {
+        bucket.outros += gasto; // awareness, engagement, app promotion, etc.
+      }
+    }
+    const pct = (v: number) => (total > 0 ? Math.round((v / total) * 100) : 0);
+    return {
+      total,
+      conversao: { pct: pct(bucket.conversao), reais: bucket.conversao },
+      trafego: { pct: pct(bucket.trafego), reais: bucket.trafego },
+      outros: { pct: pct(bucket.outros), reais: bucket.outros },
+    };
+  })();
+  const brl = (v: number) => `R$ ${v.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
 
   return (
     <div className="pb-10 max-w-[1400px] mx-auto px-4">
       <TopBar
         title="Performance Overview"
-        subtitle={account ? `${account.name} · ${account.currency} · dados reais Meta Ads (30d)` : 'Sincronizando com a Meta Ads...'}
+        subtitle={account ? `${account.name} · ${account.currency} · dados reais Meta Ads · ${rangeLabel(range)}` : 'Sincronizando com a Meta Ads...'}
         onSync={handleSync}
         isSyncing={isSyncing}
+        actions={
+          <DateRangePicker value={range} onChange={handleRangeChange} disabled={isSyncing} />
+        }
       />
 
       {error && (
@@ -208,42 +264,44 @@ export default function DashboardPage() {
         
         <div className="lg:col-span-4 flex flex-col gap-6">
           <div className="bg-[#1A1A24] border border-[#2A2A38] rounded-xl p-6 flex-1 flex flex-col hover:border-[#6366F1]/30 transition-all group">
-            <h3 className="text-[#F1F1F3] font-bold text-lg mb-4">Distribuição de Verba</h3>
-            <div className="space-y-6 flex-1 flex flex-col justify-center">
-              <div>
-                <div className="flex justify-between items-end mb-2">
-                  <span className="text-[#F1F1F3] text-sm font-medium">Conversão</span>
-                  <span className="text-[#6366F1] text-xs font-bold">85%</span>
-                </div>
-                <div className="h-2 w-full bg-[#2A2A38] rounded-full overflow-hidden">
-                  <div className="h-full bg-gradient-to-r from-[#4338CA] to-[#6366F1] w-[85%] rounded-full group-hover:brightness-110 transition-all" />
-                </div>
-              </div>
-
-              <div>
-                <div className="flex justify-between items-end mb-2">
-                  <span className="text-[#F1F1F3] text-sm font-medium">Tráfego</span>
-                  <span className="text-[#10B981] text-xs font-bold">10%</span>
-                </div>
-                <div className="h-2 w-full bg-[#2A2A38] rounded-full overflow-hidden">
-                  <div className="h-full bg-[#10B981] w-[10%] rounded-full group-hover:brightness-110 transition-all" />
-                </div>
-              </div>
-
-              <div>
-                <div className="flex justify-between items-end mb-2">
-                  <span className="text-[#F1F1F3] text-sm font-medium">Outros</span>
-                  <span className="text-[#F59E0B] text-xs font-bold">5%</span>
-                </div>
-                <div className="h-2 w-full bg-[#2A2A38] rounded-full overflow-hidden">
-                  <div className="h-full bg-[#F59E0B] w-[5%] rounded-full group-hover:brightness-110 transition-all" />
-                </div>
-              </div>
+            <div className="flex items-baseline justify-between mb-4">
+              <h3 className="text-[#F1F1F3] font-bold text-lg">Distribuição de Verba</h3>
+              <span className="text-[10px] text-[#8B8BA0] uppercase tracking-wider">por objetivo · {rangeLabel(range)}</span>
             </div>
+
+            {budgetDist.total <= 0 ? (
+              <div className="flex-1 flex items-center justify-center text-[#8B8BA0] text-sm">
+                Sem gasto no período.
+              </div>
+            ) : (
+              <div className="space-y-6 flex-1 flex flex-col justify-center">
+                {[
+                  { nome: 'Conversão', data: budgetDist.conversao, bar: 'bg-gradient-to-r from-[#4338CA] to-[#6366F1]', txt: 'text-[#6366F1]' },
+                  { nome: 'Tráfego', data: budgetDist.trafego, bar: 'bg-[#10B981]', txt: 'text-[#10B981]' },
+                  { nome: 'Outros', data: budgetDist.outros, bar: 'bg-[#F59E0B]', txt: 'text-[#F59E0B]' },
+                ].map((row) => (
+                  <div key={row.nome}>
+                    <div className="flex justify-between items-end mb-2">
+                      <span className="text-[#F1F1F3] text-sm font-medium">{row.nome}</span>
+                      <span className={`${row.txt} text-xs font-bold`}>
+                        {row.data.pct}% <span className="text-[#8B8BA0] font-normal">· {brl(row.data.reais)}</span>
+                      </span>
+                    </div>
+                    <div className="h-2 w-full bg-[#2A2A38] rounded-full overflow-hidden">
+                      <div
+                        className={`h-full ${row.bar} rounded-full group-hover:brightness-110 transition-all`}
+                        style={{ width: `${row.data.pct}%` }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <ClaudeAdsHealth
             score={healthScore}
+            factors={auditFactors}
             onRunAudit={handleRunAudit}
             isAuditing={isAuditing}
             auditProgress={auditProgress}

@@ -16,8 +16,13 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const campaignId = req.nextUrl.searchParams.get('campaignId');
-  const range = req.nextUrl.searchParams.get('range') || 'last_30d';
+  const sp = req.nextUrl.searchParams;
+  const campaignId = sp.get('campaignId');
+  const since = sp.get('since') || undefined;
+  const until = sp.get('until') || undefined;
+  const preset = sp.get('range') || 'last_30d';
+  const date = since && until ? { since, until } : { preset };
+  const range = since && until ? `${since}..${until}` : preset;
   if (!campaignId) {
     return NextResponse.json(
       { success: false, error: 'Parâmetro campaignId é obrigatório.' },
@@ -26,7 +31,7 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const analysis = await fetchCampaignAnalysis(campaignId, range);
+    const analysis = await fetchCampaignAnalysis(campaignId, date);
     return NextResponse.json({ success: true, range, ...analysis });
   } catch (error: any) {
     console.error('Falha na análise profunda:', error);

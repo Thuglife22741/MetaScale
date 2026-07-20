@@ -3,13 +3,23 @@ import { AIDiagnostic } from '@/types';
 
 interface AIAnalystProps {
   diagnostic: AIDiagnostic | null;
+  /** Mensagem de erro caso a IA falhe (evita "Gerando..." infinito). */
+  error?: string | null;
 }
 
-export function AIAnalyst({ diagnostic }: AIAnalystProps) {
+export function AIAnalyst({ diagnostic, error }: AIAnalystProps) {
   if (!diagnostic) {
     return (
-      <div className="bg-[#111116] border border-[#2A2A38] rounded-xl p-6 flex items-center justify-center min-h-[300px]">
-        <span className="text-[#8B8BA0]">Gerando diagnóstico...</span>
+      <div className="bg-[#111116] border border-[#2A2A38] rounded-xl p-6 flex items-center justify-center min-h-[300px] text-center">
+        {error ? (
+          <span className="text-red-400 text-[12px] leading-relaxed">
+            Falha ao gerar o diagnóstico.
+            <br />
+            <span className="text-[#8B8BA0] text-[11px]">{error}</span>
+          </span>
+        ) : (
+          <span className="text-[#8B8BA0]">Gerando diagnóstico...</span>
+        )}
       </div>
     );
   }

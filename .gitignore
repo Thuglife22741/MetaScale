@@ -52,3 +52,6 @@ analises-ia/*
 
 # environment variables
 .env
+
+# obsidian vault config (o projeto vive dentro de um vault; config local não versiona)
+.obsidian/
